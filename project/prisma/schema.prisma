@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String              @id @default(cuid())
+  name           String?
+  email          String?             @unique
+  emailVerified  DateTime?
+  image          String?
+  passwordHash   String?
+  monthlyIncome  Decimal             @default(0) @db.Decimal(10, 2)
+  currency       String              @default("BRL")
+  payday         Int?
+  financeProfile UserFinanceProfile?
+  expenseGroups  ExpenseGroup[]
+  expenses       Expense[]
+  extraIncomes   ExtraIncome[]
+  accounts       Account[]
+  sessions       Session[]
+  authenticators Authenticator[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+}
+
+model UserFinanceProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  monthlyIncome Decimal  @default(0) @db.Decimal(10, 2)
+  currency      String   @default("BRL")
+  paydayStart   Int?
+  paydayEnd     Int?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ExpenseGroup {
+  id                  String   @id @default(cuid())
+  userId              String
+  referenceMonth      String   @default("2026-05")
+  name                String
+  monthlyAmount       Decimal  @default(0) @db.Decimal(10, 2)
+  affectsFutureMonths Boolean  @default(false)
+  color               String   @default("#18181b")
+  description         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([userId, referenceMonth])
+}
+
+model Expense {
+  id             String   @id @default(cuid())
+  userId         String
+  expenseGroupId String
+  spentAt        DateTime
+  title          String
+  amount         Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenseGroup ExpenseGroup @relation(fields: [expenseGroupId], references: [id], onDelete: Restrict)
+
+  @@index([userId, spentAt])
+  @@index([expenseGroupId])
+}
+
+model ExtraIncome {
+  id             String   @id @default(cuid())
+  userId         String
+  referenceMonth String
+  name           String
+  amount         Decimal  @default(0) @db.Decimal(10, 2)
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, referenceMonth])
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model Authenticator {
+  credentialID         String  @unique
+  userId               String
+  providerAccountId    String
+  credentialPublicKey  String
+  counter              Int
+  credentialDeviceType String
+  credentialBackedUp   Boolean
+  transports           String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, credentialID])
+}
