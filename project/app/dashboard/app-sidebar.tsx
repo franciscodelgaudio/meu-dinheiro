@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
-  CalendarRange,
   CreditCard,
+  HandCoins,
   ReceiptText,
   Wallet,
 } from "lucide-react";
@@ -41,19 +41,19 @@ const items = [
     icon: BarChart3,
   },
   {
-    title: "Planejamento",
-    href: "/dashboard/planning",
-    icon: CalendarRange,
-  },
-  {
     title: "Grupos",
-    href: "/dashboard/expenses",
+    href: "/dashboard/groups",
     icon: CreditCard,
   },
   {
     title: "Gastos",
-    href: "/dashboard/gastos",
+    href: "/dashboard/expenses",
     icon: ReceiptText,
+  },
+  {
+    title: "Dividas",
+    href: "/dashboard/debts",
+    icon: HandCoins,
   },
 ];
 

@@ -9,7 +9,7 @@ import {
   deleteFinanceProfile,
   type FinanceActionState,
   updateFinanceProfile,
-} from "./actions";
+} from "./finance-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

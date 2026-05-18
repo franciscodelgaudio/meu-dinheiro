@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 
-import { ExpenseGroupsManager } from "./expense-groups-manager";
+import { ExpensesManager } from "./expenses-manager";
 
 type ExpensesPageProps = {
   searchParams?: Promise<{
@@ -26,9 +26,19 @@ function normalizeReferenceMonth(value: string | string[] | undefined) {
   return getCurrentReferenceMonth();
 }
 
+function getMonthRange(referenceMonth: string) {
+  const [year, month] = referenceMonth.split("-").map(Number);
+
+  return {
+    start: new Date(Date.UTC(year, month - 1, 1)),
+    end: new Date(Date.UTC(year, month, 1)),
+  };
+}
+
 export default async function ExpensesPage({ searchParams }: ExpensesPageProps) {
   const params = await searchParams;
   const selectedMonth = normalizeReferenceMonth(params?.month);
+  const monthRange = getMonthRange(selectedMonth);
   const session = await auth();
 
   if (!session?.user?.email) {
@@ -46,8 +56,15 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
   const financeProfile = await prisma.userFinanceProfile.findUnique({
     where: { userId: user.id },
-    select: { monthlyIncome: true, currency: true },
+    select: { currency: true, paydayStart: true, paydayEnd: true, monthlyIncome: true },
   });
+  const extraIncomes = await prisma.extraIncome.findMany({
+    where: { userId: user.id, referenceMonth: selectedMonth },
+    select: { amount: true },
+  });
+  const totalIncome =
+    Number(financeProfile?.monthlyIncome ?? 0) +
+    extraIncomes.reduce((sum, e) => sum + Number(e.amount), 0);
   const expenseGroups = await prisma.expenseGroup.findMany({
     where: {
       userId: user.id,
@@ -56,51 +73,90 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
       ],
     },
+    include: {
+      overrides: {
+        where: { userId: user.id, referenceMonth: selectedMonth },
+        take: 1,
+      },
+    },
     orderBy: [{ referenceMonth: "desc" }, { createdAt: "desc" }],
   });
-  const extraIncomes = await prisma.extraIncome.findMany({
-    where: { userId: user.id, referenceMonth: selectedMonth },
-    orderBy: { createdAt: "desc" },
+  const expenses = await prisma.expense.findMany({
+    where: {
+      userId: user.id,
+      spentAt: {
+        gte: monthRange.start,
+        lt: monthRange.end,
+      },
+    },
+    include: {
+      expenseGroup: {
+        include: {
+          overrides: {
+            where: { userId: user.id, referenceMonth: selectedMonth },
+            take: 1,
+          },
+        },
+      },
+    },
+    orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
   });
-  const groups = expenseGroups.map((group) => ({
-    id: group.id,
-    referenceMonth: group.referenceMonth,
-    name: group.name,
-    monthlyAmount: group.monthlyAmount.toString(),
-    affectsFutureMonths: group.affectsFutureMonths,
-    color: group.color,
-    description: group.description,
-    updatedAt: group.updatedAt.toISOString(),
-  }));
-  const extras = extraIncomes.map((income) => ({
-    id: income.id,
-    referenceMonth: income.referenceMonth,
-    name: income.name,
-    amount: income.amount.toString(),
-    description: income.description,
-    updatedAt: income.updatedAt.toISOString(),
+  const groups = expenseGroups.map((group) => {
+    const override = group.overrides[0];
+
+    return {
+      id: group.id,
+      referenceMonth: group.referenceMonth,
+      name: override?.name ?? group.name,
+      monthlyAmount: (override?.monthlyAmount ?? group.monthlyAmount).toString(),
+      color: override?.color ?? group.color,
+    };
+  });
+  const expenseItems = expenses.map((expense) => {
+    const groupOverride = expense.expenseGroup.overrides[0];
+
+    return {
+      id: expense.id,
+      spentAt: expense.spentAt.toISOString(),
+      title: expense.title,
+      amount: expense.amount.toString(),
+      behaviorType: expense.behaviorType,
+      coverageDays: expense.coverageDays,
+      expenseGroupId: expense.expenseGroupId,
+      groupName: groupOverride?.name ?? expense.expenseGroup.name,
+      groupColor: groupOverride?.color ?? expense.expenseGroup.color,
+      creditCardPurchaseId: expense.creditCardPurchaseId,
+      installmentNumber: expense.installmentNumber,
+      installmentCount: expense.installmentCount,
+    };
+  });
+  const groupTotals = groups.map((group) => ({
+    ...group,
+    spentAmount: expenseItems
+      .filter((expense) => expense.expenseGroupId === group.id)
+      .reduce((total, expense) => total + Number(expense.amount), 0)
+      .toFixed(2),
   }));
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
       <header>
         <p className="text-sm font-medium text-muted-foreground">Gastos</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          Grupos de despesas
-        </h1>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Gastos</h1>
         <p className="mt-2 text-muted-foreground">
-          Planeje grupos do mes e decida quais continuam afetando os proximos
-          meses.
+          Registre cada gasto com data, descricao, grupo de despesa e valor.
         </p>
       </header>
 
-      <ExpenseGroupsManager
+      <ExpensesManager
         groups={groups}
-        extraIncomes={extras}
+        groupTotals={groupTotals}
+        expenses={expenseItems}
         selectedMonth={selectedMonth}
-        baseIncome={financeProfile?.monthlyIncome.toString() ?? "0.00"}
         currency={financeProfile?.currency ?? "BRL"}
-        mode="expenses"
+        paydayStart={financeProfile?.paydayStart ?? null}
+        paydayEnd={financeProfile?.paydayEnd ?? null}
+        totalIncome={totalIncome}
       />
     </main>
   );

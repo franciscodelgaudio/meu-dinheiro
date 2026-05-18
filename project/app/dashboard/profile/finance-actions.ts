@@ -126,6 +126,7 @@ export async function createFinanceProfile(
   });
 
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/profile");
   return { status: "success", message: "Perfil financeiro criado." };
 }
 
@@ -155,6 +156,7 @@ export async function updateFinanceProfile(
   }
 
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/profile");
   return { status: "success", message: "Perfil financeiro atualizado." };
 }
 
@@ -174,5 +176,6 @@ export async function deleteFinanceProfile(): Promise<FinanceActionState> {
   }
 
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/profile");
   return { status: "success", message: "Perfil financeiro removido." };
 }

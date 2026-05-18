@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npx prisma db push --preview-feature 2>&1)",
+      "PowerShell(npx prisma db push 2>&1)",
+      "Bash(npm install *)",
+      "Bash(npm uninstall *)",
+      "Bash(del \"c:\\\\Users\\\\Admin\\\\MeuDinheiro\\\\project\\\\lib\\\\anthropic.ts\")",
+      "Bash(npx tsc *)"
+    ]
+  }
+}
