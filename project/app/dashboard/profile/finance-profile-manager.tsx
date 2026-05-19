@@ -32,14 +32,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 
 const initialState: FinanceActionState = {};
@@ -224,32 +216,26 @@ export function FinanceProfileManager({ profile }: FinanceProfileManagerProps) {
         </CardHeader>
         <CardContent>
           {profile ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Campo</TableHead>
-                  <TableHead>Valor</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell>Renda mensal</TableCell>
-                  <TableCell className="font-medium">
-                    {formatMoney(profile.monthlyIncome, profile.currency)}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Intervalo de recebimento</TableCell>
-                  <TableCell>
-                    {formatRange(profile.paydayStart, profile.paydayEnd)}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Observacoes</TableCell>
-                  <TableCell>{profile.notes || "Sem observacoes"}</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+            <dl className="grid gap-4">
+              <div className="grid gap-0.5">
+                <dt className="text-xs font-medium text-muted-foreground">Renda mensal</dt>
+                <dd className="text-sm font-medium">
+                  {formatMoney(profile.monthlyIncome, profile.currency)}
+                </dd>
+              </div>
+              <div className="grid gap-0.5">
+                <dt className="text-xs font-medium text-muted-foreground">Intervalo de recebimento</dt>
+                <dd className="text-sm">
+                  {formatRange(profile.paydayStart, profile.paydayEnd)}
+                </dd>
+              </div>
+              {profile.notes && (
+                <div className="grid gap-0.5">
+                  <dt className="text-xs font-medium text-muted-foreground">Observacoes</dt>
+                  <dd className="text-sm break-words">{profile.notes}</dd>
+                </div>
+              )}
+            </dl>
           ) : (
             <div className="flex min-h-64 flex-col items-center justify-center gap-4 text-center">
               <CalendarDays className="size-10 text-muted-foreground" />

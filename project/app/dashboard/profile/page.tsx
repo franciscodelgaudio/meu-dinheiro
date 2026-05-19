@@ -53,12 +53,12 @@ export default async function ProfilePage() {
     : null;
 
   return (
-    <main className="flex flex-1 flex-col gap-6 p-6">
+    <main className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
       <header>
         <p className="text-sm font-medium text-muted-foreground">
           Configuracoes da conta
         </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
           Meu perfil
         </h1>
       </header>
