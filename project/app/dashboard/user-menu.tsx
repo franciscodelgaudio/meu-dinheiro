@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { signOut } from "next-auth/react";
-import { LogOut, UserRound } from "lucide-react";
+import { ChevronsUpDown, LogOut, UserRound } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +12,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
 
 type UserMenuProps = {
   user: {
@@ -33,64 +37,89 @@ function initials(name: string | null, email: string | null) {
     .toUpperCase();
 }
 
+function Avatar({ user }: { user: UserMenuProps["user"] }) {
+  return (
+    <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+      {user.image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={user.image}
+          alt=""
+          className="size-full object-cover"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        initials(user.name, user.email)
+      )}
+    </span>
+  );
+}
+
 export function UserMenu({ user }: UserMenuProps) {
   const label = user.name || user.email || "Usuario";
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="h-11 justify-start gap-3 px-3">
-          <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-            {user.image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={user.image}
-                alt=""
-                className="size-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              initials(user.name, user.email)
-            )}
-          </span>
-          <span className="hidden max-w-44 min-w-0 text-left sm:block">
-            <span className="block truncate text-sm font-medium">{label}</span>
-            {user.email ? (
-              <span className="block truncate text-xs text-muted-foreground">
-                {user.email}
-              </span>
-            ) : null}
-          </span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>
-          <span className="block truncate">{label}</span>
-          {user.email ? (
-            <span className="block truncate text-xs font-normal text-muted-foreground">
-              {user.email}
-            </span>
-          ) : null}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/dashboard/profile">
-            <UserRound />
-            Meu perfil
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          variant="destructive"
-          onSelect={(event) => {
-            event.preventDefault();
-            void signOut({ callbackUrl: "/" });
-          }}
-        >
-          <LogOut />
-          Sair
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size="lg"
+              tooltip={label}
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            >
+              <Avatar user={user} />
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-semibold">{label}</span>
+                {user.email ? (
+                  <span className="truncate text-xs text-muted-foreground">
+                    {user.email}
+                  </span>
+                ) : null}
+              </div>
+              <ChevronsUpDown className="ml-auto size-4" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+            side="bottom"
+            align="end"
+            sideOffset={4}
+          >
+            <DropdownMenuLabel className="p-0 font-normal">
+              <div className="flex items-center gap-2 px-1 py-1.5">
+                <Avatar user={user} />
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">{label}</span>
+                  {user.email ? (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {user.email}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard/profile">
+                <UserRound />
+                Meu perfil
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onSelect={(event) => {
+                event.preventDefault();
+                void signOut({ callbackUrl: "/" });
+              }}
+            >
+              <LogOut />
+              Sair
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }

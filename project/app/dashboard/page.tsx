@@ -6,7 +6,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -42,14 +41,6 @@ function formatReferenceMonth(referenceMonth: string) {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(Date.UTC(year, month - 1, 1)));
-}
-
-function getPercentage(value: number, total: number) {
-  if (total <= 0) {
-    return 0;
-  }
-
-  return (value / total) * 100;
 }
 
 function getMonthDistance(startMonth: string, endMonth: string) {
@@ -172,9 +163,7 @@ export default async function DashboardPage({
   }, 0);
   const totalActualSpent = Number(actualExpensesAgg._sum.amount ?? 0);
   const actualExpenseCount = actualExpensesAgg._count;
-  const totalCommitments = totalExpenses + totalSavings;
-  const remaining = totalIncome - totalCommitments;
-  const committedPercentage = getPercentage(totalCommitments, totalIncome);
+  const remaining = totalIncome - totalExpenses - totalSavings;
   const moneyFormatter = new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency,
@@ -240,77 +229,7 @@ export default async function DashboardPage({
             </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Dividas do mes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold text-red-700">
-              {moneyFormatter.format(totalDebts)}
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Parcelas ja incluidas nos grupos.
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Sobra
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p
-              className={
-                remaining >= 0
-                  ? "text-2xl font-semibold text-emerald-700"
-                  : "text-2xl font-semibold text-red-700"
-              }
-            >
-              {moneyFormatter.format(remaining)}
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Depois dos gastos planejados e poupanca.
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Poupanca
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold text-emerald-700">
-              {moneyFormatter.format(totalSavings)}
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Valor reservado neste mes.
-            </p>
-          </CardContent>
-        </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Comprometimento da renda</CardTitle>
-          <CardDescription>
-            Quanto dos ganhos do mes ja esta tomado por grupos de despesas e
-            poupanca.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3">
-          <Progress value={Math.min(committedPercentage, 100)} />
-          <p className="text-sm text-muted-foreground">
-            {new Intl.NumberFormat("pt-BR", {
-              maximumFractionDigits: 1,
-            }).format(committedPercentage)}
-            % comprometido.
-          </p>
-        </CardContent>
-      </Card>
 
       <div>
         <h2 className="mb-4 text-lg font-semibold tracking-tight">Analise da IA</h2>
