@@ -10,7 +10,10 @@
       "Bash(npx prisma *)",
       "Bash(find c:\\\\\\\\Users\\\\\\\\Admin\\\\\\\\MeuDinheiro -type f -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.js\" -o -name \"*.jsx\")",
       "Bash(xargs grep -l \"auth\\\\|Auth\")",
-      "Bash(node prisma/link-google-account.mjs)"
+      "Bash(node prisma/link-google-account.mjs)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Admin\\\\MeuDinheiro\" -Force)",
+      "PowerShell(tree \"c:\\\\Users\\\\Admin\\\\MeuDinheiro\\\\project\" -L 3 -I \"node_modules|.next\" 2>$null)",
+      "PowerShell(head -80)"
     ]
   }
 }
