@@ -27,6 +27,7 @@ type ExtraIncomeInput = {
   referenceMonth: string;
   name: string;
   amount: string;
+  receivedDay: number | null;
   description: string | null;
 };
 
@@ -116,6 +117,8 @@ function parseExtraIncomeInput(formData: FormData): ExtraIncomeInput | string {
     .replace(",", ".");
   const amount = Number(amountText);
   const description = String(formData.get("description") ?? "").trim() || null;
+  const receivedDayText = String(formData.get("receivedDay") ?? "").trim();
+  const receivedDay = receivedDayText ? Number(receivedDayText) : null;
 
   if (!/^\d{4}-\d{2}$/.test(referenceMonth)) {
     return "Escolha um mes de referencia valido.";
@@ -129,10 +132,15 @@ function parseExtraIncomeInput(formData: FormData): ExtraIncomeInput | string {
     return "Informe um valor extra valido.";
   }
 
+  if (receivedDay !== null && (!Number.isInteger(receivedDay) || receivedDay < 1 || receivedDay > 31)) {
+    return "Informe um dia de recebimento valido (1-31).";
+  }
+
   return {
     referenceMonth,
     name,
     amount: amount.toFixed(2),
+    receivedDay,
     description,
   };
 }
@@ -370,6 +378,7 @@ export async function createExtraIncome(
   });
 
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/groups");
   return { status: "success", message: "Renda extra criada." };
 }
 
@@ -404,6 +413,7 @@ export async function updateExtraIncome(
   }
 
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/groups");
   return { status: "success", message: "Renda extra atualizada." };
 }
 
@@ -425,6 +435,7 @@ export async function deleteExtraIncome(
   }
 
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/groups");
   return { status: "success", message: "Renda extra removida." };
 }
 

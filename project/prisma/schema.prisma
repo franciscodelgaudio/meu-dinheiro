@@ -121,6 +121,7 @@ model CreditCardPurchase {
   installmentAmount     Decimal  @default(0) @db.Decimal(10, 2)
   installmentCount      Int      @default(1)
   description           String?
+  paymentDay            Int?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -139,6 +140,7 @@ model ExtraIncome {
   referenceMonth String
   name           String
   amount         Decimal  @default(0) @db.Decimal(10, 2)
+  receivedDay    Int?
   description    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

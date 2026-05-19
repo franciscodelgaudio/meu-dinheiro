@@ -7,6 +7,7 @@ import {
   analyzeQuickExpenseWithAI,
   type QuickExpenseBatchSuggestion,
 } from "./quick-capture";
+import { getPaydayMonthRange } from "@/lib/date-utils";
 
 export type ExpenseActionState = {
   status?: "success" | "error";
@@ -34,6 +35,7 @@ type CreditCardExpenseInput = {
   title: string;
   totalAmount: number;
   installmentCount: number;
+  paymentDay: number | null;
 };
 
 const CREDIT_CARD_GROUP_NAME = "Cartao de credito";
@@ -62,6 +64,14 @@ async function getCurrentUserId() {
   });
 
   return user?.id ?? null;
+}
+
+async function getPaydayStart(userId: string): Promise<number | null> {
+  const profile = await prisma.userFinanceProfile.findUnique({
+    where: { userId },
+    select: { paydayStart: true },
+  });
+  return profile?.paydayStart ?? null;
 }
 
 function getTodayInputDate() {
@@ -174,13 +184,31 @@ function parseCreditCardExpenseInput(
     return "Informe uma quantidade de parcelas entre 1 e 120.";
   }
 
+  const paymentDayText = String(formData.get("paymentDay") ?? "").trim();
+  const paymentDay = paymentDayText ? Number(paymentDayText) : null;
+
+  if (
+    paymentDay !== null &&
+    (!Number.isInteger(paymentDay) || paymentDay < 1 || paymentDay > 31)
+  ) {
+    return "O dia de vencimento da fatura deve ser entre 1 e 31.";
+  }
+
   return {
     purchasedAt: new Date(`${purchasedAtText}T12:00:00.000Z`),
     firstInstallmentMonth,
     title,
     totalAmount,
     installmentCount,
+    paymentDay,
   };
+}
+
+function getMonthDistance(startMonth: string, endMonth: string) {
+  const [startYear, startMonthNumber] = startMonth.split("-").map(Number);
+  const [endYear, endMonthNumber] = endMonth.split("-").map(Number);
+
+  return (endYear - startYear) * 12 + (endMonthNumber - startMonthNumber);
 }
 
 function addMonths(referenceMonth: string, monthsToAdd: number) {
@@ -245,21 +273,39 @@ async function syncCreditCardMonthlyAmount(
   expenseGroupId: string,
   referenceMonth: string,
 ) {
-  const [year, month] = referenceMonth.split("-").map(Number);
-  const start = new Date(Date.UTC(year, month - 1, 1));
-  const end = new Date(Date.UTC(year, month, 1));
-  const total = await prisma.expense.aggregate({
+  const purchases = await prisma.creditCardPurchase.findMany({
     where: {
       userId,
       expenseGroupId,
-      spentAt: {
-        gte: start,
-        lt: end,
-      },
+      kind: "credit_card",
+      firstInstallmentMonth: { lte: referenceMonth },
     },
-    _sum: { amount: true },
+    select: {
+      totalAmount: true,
+      installmentCount: true,
+      firstInstallmentMonth: true,
+    },
   });
-  const monthlyAmount = (total._sum.amount ?? 0).toString();
+
+  let totalValue = 0;
+
+  for (const purchase of purchases) {
+    const idx = getMonthDistance(purchase.firstInstallmentMonth, referenceMonth);
+
+    if (idx >= 0 && idx < purchase.installmentCount) {
+      const amounts = getInstallmentAmounts(purchase.totalAmount.toString(), purchase.installmentCount);
+      totalValue += Number(amounts[idx] ?? 0);
+    }
+  }
+
+  if (totalValue === 0) {
+    await prisma.expenseGroupOverride.deleteMany({
+      where: { expenseGroupId, referenceMonth },
+    });
+    return;
+  }
+
+  const monthlyAmount = totalValue.toFixed(2);
 
   await prisma.expenseGroupOverride.upsert({
     where: {
@@ -503,43 +549,20 @@ export async function createCreditCardExpense(
     addMonths(input.firstInstallmentMonth, index),
   );
 
-  await prisma.$transaction(async (tx) => {
-    const purchase = await tx.creditCardPurchase.create({
-      data: {
-        userId,
-        expenseGroupId: groupId,
-        kind: "credit_card",
-        source: CREDIT_CARD_GROUP_NAME,
-        purchasedAt: input.purchasedAt,
-        firstInstallmentMonth: input.firstInstallmentMonth,
-        title: input.title,
-        totalAmount: input.totalAmount.toFixed(2),
-        installmentAmount: installmentAmounts[0],
-        installmentCount: input.installmentCount,
-      },
-      select: { id: true },
-    });
-
-    await tx.expense.createMany({
-      data: installmentAmounts.map((amount, index) => {
-        const installmentNumber = index + 1;
-        const installmentLabel =
-          input.installmentCount > 1
-            ? `${input.title} (${installmentNumber}/${input.installmentCount})`
-            : input.title;
-
-        return {
-          userId,
-          expenseGroupId: groupId,
-          creditCardPurchaseId: purchase.id,
-          installmentNumber,
-          installmentCount: input.installmentCount,
-          spentAt: getInstallmentDate(referenceMonths[index]),
-          title: installmentLabel,
-          amount,
-        };
-      }),
-    });
+  await prisma.creditCardPurchase.create({
+    data: {
+      userId,
+      expenseGroupId: groupId,
+      kind: "credit_card",
+      source: CREDIT_CARD_GROUP_NAME,
+      purchasedAt: input.purchasedAt,
+      firstInstallmentMonth: input.firstInstallmentMonth,
+      title: input.title,
+      totalAmount: input.totalAmount.toFixed(2),
+      installmentAmount: installmentAmounts[0],
+      installmentCount: input.installmentCount,
+      paymentDay: input.paymentDay,
+    },
   });
 
   for (const referenceMonth of referenceMonths) {

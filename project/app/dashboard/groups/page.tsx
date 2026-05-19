@@ -229,6 +229,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     referenceMonth: income.referenceMonth,
     name: income.name,
     amount: income.amount.toString(),
+    receivedDay: income.receivedDay,
     description: income.description,
     updatedAt: income.updatedAt.toISOString(),
   }));
@@ -245,16 +246,14 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     : null;
 
   return (
-    <main className="flex flex-1 flex-col gap-6 p-6">
+    <main className="flex flex-1 flex-col gap-4 p-4 sm:gap-6 sm:p-6">
       <header>
-        <p className="text-sm font-medium text-muted-foreground">Gastos</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+        <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+          Planejamento
+        </p>
+        <h1 className="mt-1 text-xl font-bold text-zinc-950 sm:text-2xl">
           Grupos de despesas
         </h1>
-        <p className="mt-2 text-muted-foreground">
-          Planeje grupos do mes e decida quais continuam afetando os proximos
-          meses.
-        </p>
       </header>
 
       <ExpenseGroupsManager

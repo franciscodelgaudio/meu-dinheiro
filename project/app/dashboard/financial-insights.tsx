@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Calendar, Lightbulb, ShieldAlert } from "lucide-react";
+import { getPaydayMonthRange } from "@/lib/date-utils";
 
 type InsightsData = {
   riskLevel: "low" | "medium" | "high" | "critical";
@@ -49,14 +50,6 @@ function getNextWeekendLabel(today: Date): string {
   }).format(saturday);
 }
 
-function getMonthRange(referenceMonth: string) {
-  const [year, month] = referenceMonth.split("-").map(Number);
-  return {
-    start: new Date(Date.UTC(year, month - 1, 1)),
-    end: new Date(Date.UTC(year, month, 1)),
-  };
-}
-
 export async function FinancialInsights({ selectedMonth }: { selectedMonth: string }) {
   const session = await auth();
   if (!session?.user?.email) redirect("/login");
@@ -67,14 +60,15 @@ export async function FinancialInsights({ selectedMonth }: { selectedMonth: stri
   });
   if (!user) redirect("/login");
 
-  const monthRange = getMonthRange(selectedMonth);
+  const financeProfile = await prisma.userFinanceProfile.findUnique({
+    where: { userId: user.id },
+    select: { monthlyIncome: true, paydayStart: true, currency: true },
+  });
 
-  const [financeProfile, extraIncomes, savingsAllocation, expenseGroups] =
+  const monthRange = getPaydayMonthRange(selectedMonth, financeProfile?.paydayStart ?? null);
+
+  const [extraIncomes, savingsAllocation, expenseGroups] =
     await Promise.all([
-      prisma.userFinanceProfile.findUnique({
-        where: { userId: user.id },
-        select: { monthlyIncome: true, paydayStart: true, currency: true },
-      }),
       prisma.extraIncome.findMany({
         where: { userId: user.id, referenceMonth: selectedMonth },
         select: { amount: true },

@@ -18,6 +18,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { FinancialInsights, FinancialInsightsSkeleton } from "./financial-insights";
+import { getPaydayMonthRange } from "@/lib/date-utils";
 
 type DashboardPageProps = {
   searchParams?: Promise<{ month?: string | string[] }>;
@@ -136,9 +137,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     where: { userId: user.id, kind: "debt", firstInstallmentMonth: { lte: selectedMonth } },
   });
 
-  const [selectedYear, selectedMonthNumber] = selectedMonth.split("-").map(Number);
-  const monthStart = new Date(Date.UTC(selectedYear, selectedMonthNumber - 1, 1));
-  const monthEnd = new Date(Date.UTC(selectedYear, selectedMonthNumber, 1));
+  const { start: monthStart, end: monthEnd } = getPaydayMonthRange(
+    selectedMonth,
+    financeProfile?.paydayStart ?? null,
+  );
   const actualExpensesAgg = await prisma.expense.aggregate({
     where: { userId: user.id, spentAt: { gte: monthStart, lt: monthEnd } },
     _sum: { amount: true },
@@ -164,7 +166,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   }, 0);
   const totalActualSpent = Number(actualExpensesAgg._sum.amount ?? 0);
   const actualExpenseCount = actualExpensesAgg._count;
-  const remaining = totalIncome - totalExpenses - totalSavings - totalDebts;
+  const remaining = totalIncome - totalExpenses - totalSavings;
 
   const spentPct = totalExpenses > 0 ? Math.min((totalActualSpent / totalExpenses) * 100, 100) : 0;
 
@@ -172,26 +174,26 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const nextMonth = getNextMonth(selectedMonth);
 
   return (
-    <main className="flex flex-1 flex-col gap-6 p-6">
+    <main className="flex flex-1 flex-col gap-4 p-4 sm:gap-6 sm:p-6">
       {/* Header + month navigator */}
-      <header className="flex items-start justify-between gap-4">
+      <header className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
             Resumo financeiro
           </p>
-          <h1 className="mt-1 text-2xl font-bold capitalize text-zinc-950">
+          <h1 className="mt-1 text-xl font-bold capitalize text-zinc-950 sm:text-2xl">
             {formatReferenceMonth(selectedMonth)}
           </h1>
         </div>
 
-        <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-white p-1 shadow-sm">
+        <div className="flex shrink-0 items-center gap-1 rounded-lg border border-zinc-200 bg-white p-1 shadow-sm">
           <Link
             href={`/dashboard?month=${prevMonth}`}
             className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
           >
             <ChevronLeft size={15} />
           </Link>
-          <span className="px-1 text-xs font-medium capitalize text-zinc-600">
+          <span className="hidden px-1 text-xs font-medium capitalize text-zinc-600 sm:inline">
             {formatReferenceMonth(selectedMonth)}
           </span>
           <Link
@@ -204,7 +206,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       </header>
 
       {/* 4 metric cards */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
         {/* Renda total */}
         <Card className="border-zinc-200 shadow-sm">
           <CardHeader className="pb-2">
@@ -306,7 +308,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
       {/* Savings + Debts strip */}
       {(totalSavings > 0 || totalDebts > 0) && (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
           {totalSavings > 0 && (
             <div className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
@@ -337,7 +339,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-zinc-400">
           Acesso rápido
         </p>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
           {quickLinks.map(({ href, icon: Icon, label, description, color }) => (
             <Link
               key={href}

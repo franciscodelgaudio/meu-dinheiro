@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 
 import { ExpensesManager } from "./expenses-manager";
+import { getPaydayMonthRange } from "@/lib/date-utils";
 
 type ExpensesPageProps = {
   searchParams?: Promise<{
@@ -26,19 +27,9 @@ function normalizeReferenceMonth(value: string | string[] | undefined) {
   return getCurrentReferenceMonth();
 }
 
-function getMonthRange(referenceMonth: string) {
-  const [year, month] = referenceMonth.split("-").map(Number);
-
-  return {
-    start: new Date(Date.UTC(year, month - 1, 1)),
-    end: new Date(Date.UTC(year, month, 1)),
-  };
-}
-
 export default async function ExpensesPage({ searchParams }: ExpensesPageProps) {
   const params = await searchParams;
   const selectedMonth = normalizeReferenceMonth(params?.month);
-  const monthRange = getMonthRange(selectedMonth);
   const session = await auth();
 
   if (!session?.user?.email) {
@@ -58,6 +49,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     where: { userId: user.id },
     select: { currency: true, paydayStart: true, paydayEnd: true, monthlyIncome: true },
   });
+  const monthRange = getPaydayMonthRange(selectedMonth, financeProfile?.paydayStart ?? null);
   const extraIncomes = await prisma.extraIncome.findMany({
     where: { userId: user.id, referenceMonth: selectedMonth },
     select: { amount: true },
@@ -139,13 +131,10 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   }));
 
   return (
-    <main className="flex flex-1 flex-col gap-6 p-6">
+    <main className="flex flex-1 flex-col gap-4 p-4 sm:gap-6 sm:p-6">
       <header>
-        <p className="text-sm font-medium text-muted-foreground">Gastos</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Gastos</h1>
-        <p className="mt-2 text-muted-foreground">
-          Registre cada gasto com data, descricao, grupo de despesa e valor.
-        </p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Gastos</p>
+        <h1 className="mt-1 text-xl font-bold text-zinc-950 sm:text-2xl">Lançamentos</h1>
       </header>
 
       <ExpensesManager

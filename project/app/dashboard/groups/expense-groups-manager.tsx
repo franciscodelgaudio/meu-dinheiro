@@ -97,6 +97,7 @@ export type ExtraIncomeView = {
   referenceMonth: string;
   name: string;
   amount: string;
+  receivedDay: number | null;
   description: string | null;
   updatedAt: string;
 };
@@ -300,111 +301,98 @@ function YearTable({
   const annualRemaining = yearData.reduce((s, r) => s + r.remaining, 0);
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Mês</TableHead>
-          <TableHead className="text-right">Grupos</TableHead>
-          <TableHead className="text-right">Renda extra</TableHead>
-          <TableHead className="text-right">Poupança</TableHead>
-          <TableHead className="text-right">Disponível</TableHead>
-          <TableHead className="text-right">Comprometido</TableHead>
-          <TableHead className="text-right">Sobra</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {yearData.map((row) => {
-          const committedPct = getPercentage(
-            row.totalCommitments,
-            row.totalIncome,
-          );
-          const now = new Date();
-          const actualCurrentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-          const isCurrent = row.month === actualCurrentMonth;
+    <div className="overflow-x-auto">
+      <Table className="min-w-[480px]">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Mês</TableHead>
+            <TableHead className="text-right">Grupos</TableHead>
+            <TableHead className="hidden sm:table-cell text-right">Renda extra</TableHead>
+            <TableHead className="hidden sm:table-cell text-right">Poupança</TableHead>
+            <TableHead className="text-right">Disponível</TableHead>
+            <TableHead className="hidden sm:table-cell text-right">%</TableHead>
+            <TableHead className="text-right">Sobra</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {yearData.map((row) => {
+            const committedPct = getPercentage(
+              row.totalCommitments,
+              row.totalIncome,
+            );
+            const now = new Date();
+            const actualCurrentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+            const isCurrent = row.month === actualCurrentMonth;
 
-          return (
-            <TableRow
-              key={row.month}
-              className="cursor-pointer"
-              onClick={() =>
-                router.push(`${pathname}?month=${row.month}&view=month`)
-              }
-            >
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={
-                      isCurrent ? "font-semibold capitalize" : "capitalize"
-                    }
-                  >
-                    {formatMonthShort(row.month)}
-                  </span>
-                  {isCurrent && (
-                    <Badge variant="outline" className="text-xs">
-                      Atual
-                    </Badge>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell className="text-right">
-                {formatMoney(row.totalExpenses, currency)}
-              </TableCell>
-              <TableCell className="text-right text-emerald-700">
-                {row.totalExtraIncome > 0
-                  ? formatMoney(row.totalExtraIncome, currency)
-                  : "—"}
-              </TableCell>
-              <TableCell className="text-right text-emerald-700">
-                {row.savings > 0 ? formatMoney(row.savings, currency) : "—"}
-              </TableCell>
-              <TableCell className="text-right font-medium">
-                {formatMoney(row.totalIncome, currency)}
-              </TableCell>
-              <TableCell className="text-right">
-                <span
-                  className={
-                    committedPct > 100 ? "font-medium text-red-700" : ""
-                  }
-                >
-                  {formatPercent(committedPct)}%
-                </span>
-              </TableCell>
-              <TableCell
-                className={`text-right font-medium ${row.remaining >= 0 ? "text-emerald-700" : "text-red-700"}`}
+            return (
+              <TableRow
+                key={row.month}
+                className="cursor-pointer"
+                onClick={() =>
+                  router.push(`${pathname}?month=${row.month}&view=month`)
+                }
               >
-                {formatMoney(row.remaining, currency)}
-              </TableCell>
-            </TableRow>
-          );
-        })}
-        <TableRow className="bg-muted/50 font-semibold hover:bg-muted/50">
-          <TableCell>Total anual</TableCell>
-          <TableCell className="text-right">
-            {formatMoney(annualTotalExpenses, currency)}
-          </TableCell>
-          <TableCell className="text-right text-emerald-700">
-            {formatMoney(annualTotalExtraIncome, currency)}
-          </TableCell>
-          <TableCell className="text-right text-emerald-700">
-            {formatMoney(annualTotalSavings, currency)}
-          </TableCell>
-          <TableCell className="text-right">
-            {formatMoney(annualTotalIncome, currency)}
-          </TableCell>
-          <TableCell className="text-right">
-            {formatPercent(
-              getPercentage(annualTotalCommitments, annualTotalIncome),
-            )}
-            %
-          </TableCell>
-          <TableCell
-            className={`text-right ${annualRemaining >= 0 ? "text-emerald-700" : "text-red-700"}`}
-          >
-            {formatMoney(annualRemaining, currency)}
-          </TableCell>
-        </TableRow>
-      </TableBody>
-    </Table>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <span className={isCurrent ? "font-semibold capitalize" : "capitalize"}>
+                      {formatMonthShort(row.month)}
+                    </span>
+                    {isCurrent && (
+                      <Badge variant="outline" className="text-xs">Atual</Badge>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right whitespace-nowrap">
+                  {formatMoney(row.totalExpenses, currency)}
+                </TableCell>
+                <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-emerald-700">
+                  {row.totalExtraIncome > 0 ? formatMoney(row.totalExtraIncome, currency) : "—"}
+                </TableCell>
+                <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-emerald-700">
+                  {row.savings > 0 ? formatMoney(row.savings, currency) : "—"}
+                </TableCell>
+                <TableCell className="text-right whitespace-nowrap font-medium">
+                  {formatMoney(row.totalIncome, currency)}
+                </TableCell>
+                <TableCell className="hidden sm:table-cell text-right">
+                  <span className={committedPct > 100 ? "font-medium text-red-700" : ""}>
+                    {formatPercent(committedPct)}%
+                  </span>
+                </TableCell>
+                <TableCell
+                  className={`text-right whitespace-nowrap font-medium ${row.remaining >= 0 ? "text-emerald-700" : "text-red-700"}`}
+                >
+                  {formatMoney(row.remaining, currency)}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+          <TableRow className="bg-muted/50 font-semibold hover:bg-muted/50">
+            <TableCell>Total</TableCell>
+            <TableCell className="text-right whitespace-nowrap">
+              {formatMoney(annualTotalExpenses, currency)}
+            </TableCell>
+            <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-emerald-700">
+              {formatMoney(annualTotalExtraIncome, currency)}
+            </TableCell>
+            <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-emerald-700">
+              {formatMoney(annualTotalSavings, currency)}
+            </TableCell>
+            <TableCell className="text-right whitespace-nowrap">
+              {formatMoney(annualTotalIncome, currency)}
+            </TableCell>
+            <TableCell className="hidden sm:table-cell text-right">
+              {formatPercent(getPercentage(annualTotalCommitments, annualTotalIncome))}%
+            </TableCell>
+            <TableCell
+              className={`text-right whitespace-nowrap ${annualRemaining >= 0 ? "text-emerald-700" : "text-red-700"}`}
+            >
+              {formatMoney(annualRemaining, currency)}
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -885,6 +873,24 @@ function ExtraIncomeDialog({
           </div>
 
           <div className="grid gap-2">
+            <Label htmlFor={`receivedDay-${income?.id ?? "new"}`}>
+              Dia de recebimento
+            </Label>
+            <Input
+              id={`receivedDay-${income?.id ?? "new"}`}
+              name="receivedDay"
+              type="number"
+              min="1"
+              max="31"
+              placeholder="Ex: 5"
+              defaultValue={income?.receivedDay ?? ""}
+            />
+            <p className="text-xs text-muted-foreground">
+              Dia exato do mes em que voce recebeu este valor.
+            </p>
+          </div>
+
+          <div className="grid gap-2">
             <Label htmlFor={`extra-description-${income?.id ?? "new"}`}>
               Descricao
             </Label>
@@ -1222,22 +1228,24 @@ export function ExpenseGroupsManager({
     );
 
     return (
-      <div className="grid gap-6">
-        <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-          <Card>
-            <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1.5">
-                <CardTitle>Grupos de despesas</CardTitle>
-                <CardDescription>
-                  Visão anual — {selectedYear}
-                </CardDescription>
+      <div className="grid gap-4 sm:gap-6">
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-[1fr_320px]">
+          <Card className="border-zinc-200 shadow-sm">
+            <CardHeader className="gap-3 pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <CardTitle className="text-base font-semibold text-zinc-950">
+                    Grupos de despesas
+                  </CardTitle>
+                  <CardDescription>Visão anual — {selectedYear}</CardDescription>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
                 <YearSelector selectedMonth={selectedMonth} />
                 <ViewToggle view="year" selectedMonth={selectedMonth} />
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0 sm:p-6 sm:pt-0">
               <YearTable
                 yearData={yearData}
                 selectedMonth={selectedMonth}
@@ -1246,73 +1254,65 @@ export function ExpenseGroupsManager({
             </CardContent>
           </Card>
 
-          <div className="grid content-start gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Controle anual</CardTitle>
+          <div className="grid content-start gap-4">
+            <Card className="border-zinc-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-zinc-800">
+                  Controle anual
+                </CardTitle>
                 <CardDescription>{selectedYear}</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
                 <div className="grid gap-2">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-muted-foreground">
-                      Renda base (×12)
-                    </span>
-                    <span className="font-medium">
+                    <span className="text-sm text-zinc-500">Renda base (×12)</span>
+                    <span className="text-sm font-semibold text-zinc-950">
                       {formatMoney(annualBase, currency)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-muted-foreground">
-                      Renda extra
-                    </span>
-                    <span className="font-medium text-emerald-700">
+                    <span className="text-sm text-zinc-500">Renda extra</span>
+                    <span className={`text-sm font-semibold ${annualTotalExtraIncome > 0 ? "text-emerald-600" : "text-zinc-400"}`}>
                       {formatMoney(annualTotalExtraIncome, currency)}
                     </span>
                   </div>
                 </div>
-                <Separator />
+
+                <Separator className="bg-zinc-100" />
+
                 <div>
-                  <p className="text-sm text-muted-foreground">
-                    Disponível no ano
-                  </p>
-                  <p className="mt-1 text-2xl font-semibold">
+                  <p className="text-xs text-zinc-500">Disponível no ano</p>
+                  <p className="mt-0.5 text-2xl font-bold text-zinc-950">
                     {formatMoney(annualTotalIncome, currency)}
                   </p>
                 </div>
-                <Separator />
-                <div className="grid gap-3">
+
+                <Separator className="bg-zinc-100" />
+
+                <div className="grid gap-2.5">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-muted-foreground">
-                      Total em grupos
-                    </span>
-                    <span className="font-medium">
+                    <span className="text-sm text-zinc-500">Total em grupos</span>
+                    <span className="text-sm font-semibold text-zinc-950">
                       {formatMoney(annualTotalExpenses, currency)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-muted-foreground">
-                      Poupança
-                    </span>
-                    <span className="font-medium text-emerald-700">
+                    <span className="text-sm text-zinc-500">Poupança</span>
+                    <span className={`text-sm font-semibold ${annualTotalSavings > 0 ? "text-violet-600" : "text-zinc-400"}`}>
                       {formatMoney(annualTotalSavings, currency)}
                     </span>
                   </div>
-                  <Progress value={Math.min(annualCommittedPct, 100)} />
-                  <p className="text-sm text-muted-foreground">
-                    {formatPercent(annualCommittedPct)}% da renda comprometida.
+                  <Progress value={Math.min(annualCommittedPct, 100)} className="h-1.5" />
+                  <p className="text-xs text-zinc-400">
+                    {formatPercent(annualCommittedPct)}% da renda comprometida
                   </p>
                 </div>
-                <Separator />
+
+                <Separator className="bg-zinc-100" />
+
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-muted-foreground">Sobra</span>
-                  <span
-                    className={
-                      annualRemaining >= 0
-                        ? "font-semibold text-emerald-700"
-                        : "font-semibold text-red-700"
-                    }
-                  >
+                  <span className="text-sm text-zinc-500">Sobra</span>
+                  <span className={`text-sm font-bold ${annualRemaining >= 0 ? "text-emerald-700" : "text-red-600"}`}>
                     {formatMoney(annualRemaining, currency)}
                   </span>
                 </div>
@@ -1325,69 +1325,76 @@ export function ExpenseGroupsManager({
   }
 
   return (
-    <div className="grid gap-6">
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+    <div className="grid gap-4 sm:gap-6">
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[1fr_320px]">
         {mode === "expenses" ? (
-          <Card>
-            <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1.5">
-                <CardTitle>Grupos de despesas</CardTitle>
-                <CardDescription>
-                  Despesas planejadas para {formatReferenceMonth(selectedMonth)}.
-                </CardDescription>
+          <Card className="border-zinc-200 shadow-sm">
+            <CardHeader className="gap-0 pb-0">
+              {/* Linha 1: título + ação primária */}
+              <div className="flex items-start justify-between gap-3 pb-3">
+                <div className="space-y-0.5">
+                  <CardTitle className="text-base font-semibold text-zinc-950">
+                    Grupos de despesas
+                  </CardTitle>
+                  <CardDescription className="capitalize">
+                    {formatReferenceMonth(selectedMonth)}
+                  </CardDescription>
+                </div>
+                <ExpenseGroupDialog selectedMonth={selectedMonth} />
               </div>
-              <div className="flex flex-wrap gap-2">
+              {/* Linha 2: navegação */}
+              <div className="flex items-center gap-2 border-t border-zinc-100 pt-3">
                 <MonthSelector selectedMonth={selectedMonth} />
                 <ViewToggle view="month" selectedMonth={selectedMonth} />
-                <ExtraIncomeDialog selectedMonth={selectedMonth} />
-                <SavingsAllocationDialog
-                  savingsAllocation={savingsAllocation}
-                  selectedMonth={selectedMonth}
-                />
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
                   aria-label={showZero ? "Ocultar grupos zerados" : "Mostrar grupos zerados"}
                   onClick={() => setShowZero((v) => !v)}
+                  className="text-zinc-400 hover:text-zinc-700"
                 >
-                  {showZero ? <EyeOff /> : <Eye />}
+                  {showZero ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </Button>
-                <ExpenseGroupDialog selectedMonth={selectedMonth} />
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0 sm:p-6 sm:pt-0">
               {groups.length > 0 ? (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      {(["name", "monthlyAmount"] as const).map((field) => {
-                        const labels = { name: "Grupo", monthlyAmount: "Valor no mes" };
-                        const active = sortField === field;
-                        return (
-                          <TableHead key={field}>
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 hover:text-foreground"
-                              onClick={() => {
-                                if (active) {
-                                  setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                                } else {
-                                  setSortField(field);
-                                  setSortDir("asc");
-                                }
-                              }}
-                            >
-                              {labels[field]}
-                              <span className="text-xs text-muted-foreground">
-                                {active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
-                              </span>
-                            </button>
-                          </TableHead>
-                        );
-                      })}
-                      <TableHead>Impacto</TableHead>
-                      <TableHead className="w-24 text-right">Acoes</TableHead>
+                      <TableHead className="pl-4 sm:pl-4">
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 hover:text-foreground"
+                          onClick={() => {
+                            if (sortField === "name") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                            else { setSortField("name"); setSortDir("asc"); }
+                          }}
+                        >
+                          Grupo
+                          <span className="text-xs text-muted-foreground">
+                            {sortField === "name" ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="hidden sm:table-cell">
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 hover:text-foreground"
+                          onClick={() => {
+                            if (sortField === "monthlyAmount") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                            else { setSortField("monthlyAmount"); setSortDir("asc"); }
+                          }}
+                        >
+                          Valor no mês
+                          <span className="text-xs text-muted-foreground">
+                            {sortField === "monthlyAmount" ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+                          </span>
+                        </button>
+                      </TableHead>
+                      <TableHead className="hidden sm:table-cell">Impacto</TableHead>
+                      <TableHead className="w-20 pr-4 text-right sm:w-24 sm:pr-4">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1401,22 +1408,25 @@ export function ExpenseGroupsManager({
 
                       return (
                         <TableRow key={group.id}>
-                          <TableCell>
+                          <TableCell className="pl-4 sm:pl-4">
                             <div className="flex items-center gap-3">
                               <span
-                                className="size-3 rounded-full"
+                                className="size-3 shrink-0 rounded-full"
                                 style={{ backgroundColor: group.color }}
                               />
                               <div className="grid gap-0.5">
                                 <div className="flex items-center gap-2">
                                   <p className="font-medium">{group.name}</p>
                                   {group.priority === "high" && (
-                                    <Badge variant="default" className="text-xs">Alta</Badge>
+                                    <Badge variant="default" className="hidden text-xs sm:inline-flex">Alta</Badge>
                                   )}
                                   {group.priority === "low" && (
-                                    <Badge variant="outline" className="text-xs text-muted-foreground">Baixa</Badge>
+                                    <Badge variant="outline" className="hidden text-xs text-muted-foreground sm:inline-flex">Baixa</Badge>
                                   )}
                                 </div>
+                                <p className="text-sm font-medium text-zinc-700 sm:hidden">
+                                  {formatMoney(group.monthlyAmount, currency)}
+                                </p>
                                 {group.repeatMonths && (
                                   <p className="text-xs text-muted-foreground">
                                     {formatRepeatMonthsLabel(group.repeatMonths)}
@@ -1425,25 +1435,23 @@ export function ExpenseGroupsManager({
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="font-medium">
+                          <TableCell className="hidden font-medium sm:table-cell">
                             {formatMoney(group.monthlyAmount, currency)}
                           </TableCell>
-                          <TableCell>
-                            <div className="grid min-w-40 gap-2">
-                              <div className="flex items-center justify-between gap-3 text-sm">
+                          <TableCell className="hidden sm:table-cell">
+                            <div className="grid w-36 gap-1.5">
+                              <div className="flex items-center justify-between gap-2 text-sm">
                                 <span className="text-muted-foreground">
                                   {formatPercent(percentage)}%
                                 </span>
-                                <Badge
-                                  variant={percentage > 30 ? "destructive" : "secondary"}
-                                >
+                                <Badge variant={percentage > 30 ? "destructive" : "secondary"}>
                                   da renda
                                 </Badge>
                               </div>
-                              <Progress value={Math.min(percentage, 100)} />
+                              <Progress value={Math.min(percentage, 100)} className="h-1.5" />
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="pr-4 sm:pr-4">
                             <div className="flex justify-end gap-2">
                               <ExpenseGroupDialog
                                 group={group}
@@ -1458,13 +1466,14 @@ export function ExpenseGroupsManager({
                   </TableBody>
                 </Table>
               ) : (
-                <div className="flex min-h-56 flex-col items-center justify-center gap-4 text-center">
-                  <WalletCards className="size-10 text-muted-foreground" />
+                <div className="flex min-h-56 flex-col items-center justify-center gap-3 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-100 text-zinc-400">
+                    <WalletCards className="size-6" />
+                  </div>
                   <div>
-                    <h2 className="text-lg font-semibold">Nenhum grupo neste mes</h2>
-                    <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                      Crie grupos para simular quanto cada parte do orcamento tira
-                      da renda deste mes.
+                    <p className="font-semibold text-zinc-800">Nenhum grupo neste mês</p>
+                    <p className="mt-1 max-w-sm text-sm text-zinc-400">
+                      Crie grupos para simular o impacto de cada despesa na sua renda.
                     </p>
                   </div>
                 </div>
@@ -1473,70 +1482,74 @@ export function ExpenseGroupsManager({
           </Card>
         ) : null}
 
-        <div className="grid content-start gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Controle mensal</CardTitle>
+        <div className="grid content-start gap-4">
+          <Card className="border-zinc-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-zinc-800">
+                Controle mensal
+              </CardTitle>
               <CardDescription className="capitalize">
                 {formatReferenceMonth(selectedMonth)}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
+              {/* Renda */}
               <div className="grid gap-2">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-muted-foreground">Renda base</span>
-                  <span className="font-medium">
+                  <span className="text-sm text-zinc-500">Renda base</span>
+                  <span className="text-sm font-semibold text-zinc-950">
                     {formatMoney(base, currency)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-muted-foreground">
-                    Renda extra
-                  </span>
-                  <span className="font-medium text-emerald-700">
+                  <span className="text-sm text-zinc-500">Renda extra</span>
+                  <span className={`text-sm font-semibold ${totalExtraIncome > 0 ? "text-emerald-600" : "text-zinc-400"}`}>
                     {formatMoney(totalExtraIncome, currency)}
                   </span>
                 </div>
               </div>
-              <Separator />
+
+              <Separator className="bg-zinc-100" />
+
+              {/* Total disponível */}
               <div>
-                <p className="text-sm text-muted-foreground">Disponivel no mes</p>
-                <p className="mt-1 text-2xl font-semibold">
+                <p className="text-xs text-zinc-500">Disponível no mês</p>
+                <p className="mt-0.5 text-2xl font-bold text-zinc-950">
                   {formatMoney(totalIncome, currency)}
                 </p>
               </div>
-              <Separator />
-              <div className="grid gap-3">
+
+              <Separator className="bg-zinc-100" />
+
+              {/* Comprometido */}
+              <div className="grid gap-2.5">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-muted-foreground">
-                    Total em grupos
+                  <span className="text-sm text-zinc-500">Total em grupos</span>
+                  <span className="text-sm font-semibold text-zinc-950">
+                    {formatMoney(totalExpenses, currency)}
                   </span>
-                <span className="font-medium">
-                  {formatMoney(totalExpenses, currency)}
-                </span>
-              </div>
+                </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-muted-foreground">
-                    Poupanca
-                  </span>
-                  <span className="font-medium text-emerald-700">
+                  <span className="text-sm text-zinc-500">Poupança</span>
+                  <span className={`text-sm font-semibold ${savingsAmount > 0 ? "text-violet-600" : "text-zinc-400"}`}>
                     {formatMoney(savingsAmount, currency)}
                   </span>
                 </div>
-                <Progress value={Math.min(committedPercentage, 100)} />
-                <p className="text-sm text-muted-foreground">
-                  {formatPercent(committedPercentage)}% da renda comprometida.
+                <Progress value={Math.min(committedPercentage, 100)} className="h-1.5" />
+                <p className="text-xs text-zinc-400">
+                  {formatPercent(committedPercentage)}% da renda comprometida
                 </p>
               </div>
-              <Separator />
+
+              <Separator className="bg-zinc-100" />
+
+              {/* Sobra */}
               <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-muted-foreground">Sobra</span>
+                <span className="text-sm text-zinc-500">Sobra</span>
                 <span
-                  className={
-                    remaining >= 0
-                      ? "font-semibold text-emerald-700"
-                      : "font-semibold text-red-700"
-                  }
+                  className={`text-sm font-bold ${
+                    remaining >= 0 ? "text-emerald-700" : "text-red-600"
+                  }`}
                 >
                   {formatMoney(remaining, currency)}
                 </span>
@@ -1546,25 +1559,24 @@ export function ExpenseGroupsManager({
         </div>
       </div>
 
-      {mode === "planning" ? (
-        <Card>
-          <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-1.5">
-              <CardTitle>Entradas e poupanca do mes</CardTitle>
-              <CardDescription>
-                Ajustes mensais que aumentam a renda ou separam dinheiro para
-                guardar.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <SavingsAllocationDialog
-                savingsAllocation={savingsAllocation}
-                selectedMonth={selectedMonth}
-              />
-              <ExtraIncomeDialog selectedMonth={selectedMonth} />
-            </div>
-          </CardHeader>
-          <CardContent className="grid gap-6">
+      <Card>
+        <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1.5">
+            <CardTitle>Entradas e poupanca do mes</CardTitle>
+            <CardDescription>
+              Ajustes mensais que aumentam a renda ou separam dinheiro para
+              guardar.
+            </CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <SavingsAllocationDialog
+              savingsAllocation={savingsAllocation}
+              selectedMonth={selectedMonth}
+            />
+            <ExtraIncomeDialog selectedMonth={selectedMonth} />
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-6">
             <div className="grid gap-3 rounded-md border p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
@@ -1621,6 +1633,11 @@ export function ExpenseGroupsManager({
                             <p className="text-sm text-muted-foreground">
                               {income.description || "Sem descricao"}
                             </p>
+                            {income.receivedDay != null && (
+                              <p className="text-xs text-muted-foreground">
+                                Recebido no dia {income.receivedDay}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </TableCell>
@@ -1652,9 +1669,8 @@ export function ExpenseGroupsManager({
                 </div>
               </div>
             )}
-          </CardContent>
-        </Card>
-      ) : null}
+        </CardContent>
+      </Card>
     </div>
   );
 }

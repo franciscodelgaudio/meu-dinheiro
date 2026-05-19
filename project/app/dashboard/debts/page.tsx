@@ -67,14 +67,34 @@ export default async function DebtsPage({ searchParams }: DebtsPageProps) {
     where: { userId: user.id },
     select: { currency: true },
   });
-  const commitments = await prisma.creditCardPurchase.findMany({
-    where: {
-      userId: user.id,
-      kind: "debt",
-      firstInstallmentMonth: { lte: selectedMonth },
-    },
-    orderBy: [{ firstInstallmentMonth: "asc" }, { createdAt: "desc" }],
-  });
+
+  const [commitments, paidExpenses] = await Promise.all([
+    prisma.creditCardPurchase.findMany({
+      where: {
+        userId: user.id,
+        kind: { in: ["debt", "credit_card"] },
+        firstInstallmentMonth: { lte: selectedMonth },
+      },
+      orderBy: [{ kind: "asc" }, { firstInstallmentMonth: "asc" }, { createdAt: "desc" }],
+    }),
+    prisma.expense.findMany({
+      where: {
+        userId: user.id,
+        creditCardPurchaseId: { not: null },
+      },
+      select: {
+        id: true,
+        creditCardPurchaseId: true,
+        installmentNumber: true,
+      },
+    }),
+  ]);
+
+  const paidMap = new Map(
+    paidExpenses
+      .filter((e) => e.creditCardPurchaseId != null && e.installmentNumber != null)
+      .map((e) => [`${e.creditCardPurchaseId}-${e.installmentNumber}`, e.id]),
+  );
 
   const debtItems = commitments
     .map((commitment) => {
@@ -94,6 +114,7 @@ export default async function DebtsPage({ searchParams }: DebtsPageProps) {
         Number(commitment.totalAmount),
         commitment.installmentCount,
       );
+      const installmentNumber = selectedInstallmentIndex + 1;
       const paidBeforeMonth = installmentAmounts
         .slice(0, selectedInstallmentIndex)
         .reduce((total, amount) => total + amount, 0);
@@ -101,6 +122,9 @@ export default async function DebtsPage({ searchParams }: DebtsPageProps) {
       const remainingAfterMonth = installmentAmounts
         .slice(selectedInstallmentIndex + 1)
         .reduce((total, amount) => total + amount, 0);
+
+      const payKey = `${commitment.id}-${installmentNumber}`;
+      const paymentExpenseId = paidMap.get(payKey) ?? null;
 
       return {
         id: commitment.id,
@@ -112,22 +136,22 @@ export default async function DebtsPage({ searchParams }: DebtsPageProps) {
         totalAmount: commitment.totalAmount.toString(),
         installmentCount: commitment.installmentCount,
         description: commitment.description,
-        installmentNumber: selectedInstallmentIndex + 1,
+        installmentNumber,
         installmentAmount: installmentAmount.toFixed(2),
         paidBeforeMonth: paidBeforeMonth.toFixed(2),
         remainingAfterMonth: remainingAfterMonth.toFixed(2),
+        isPaid: paymentExpenseId !== null,
+        paymentExpenseId,
+        paymentDay: commitment.paymentDay,
       };
     })
     .filter((debt) => debt !== null);
 
   return (
-    <main className="flex flex-1 flex-col gap-6 p-6">
+    <main className="flex flex-1 flex-col gap-4 p-4 sm:gap-6 sm:p-6">
       <header>
-        <p className="text-sm font-medium text-muted-foreground">Dividas</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Dividas</h1>
-        <p className="mt-2 text-muted-foreground">
-          Acompanhe emprestimos, financiamentos e obrigacoes financeiras com prazo definido.
-        </p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Finanças</p>
+        <h1 className="mt-1 text-xl font-bold text-zinc-950 sm:text-2xl">Dívidas e Parcelados</h1>
       </header>
 
       <DebtsManager

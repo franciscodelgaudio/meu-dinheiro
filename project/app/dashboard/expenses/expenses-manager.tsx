@@ -694,7 +694,7 @@ function CreditCardExpenseDialog({ selectedMonth }: { selectedMonth: string }) {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="card-firstInstallmentMonth">
                 Primeiro mes da fatura
@@ -707,6 +707,21 @@ function CreditCardExpenseDialog({ selectedMonth }: { selectedMonth: string }) {
                 required
               />
             </div>
+            <div className="grid gap-2">
+              <Label htmlFor="card-paymentDay">Vencimento da fatura (dia)</Label>
+              <Input
+                id="card-paymentDay"
+                name="paymentDay"
+                type="number"
+                min="1"
+                max="31"
+                step="1"
+                placeholder="Ex: 10"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="card-totalAmount">Valor total</Label>
               <Input
@@ -807,27 +822,29 @@ export function ExpensesManager({
   const sustainableDaily = totalRemaining > 0 ? totalRemaining / daysRemaining : 0;
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-4 sm:gap-6">
       <QuickExpenseCapture groups={groups} selectedMonth={selectedMonth} />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[1fr_320px]">
         <Card>
-          <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-1.5">
-              <CardTitle>Gastos registrados</CardTitle>
-              <CardDescription className="capitalize">
-                {formatReferenceMonth(selectedMonth)}
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <MonthSelector selectedMonth={selectedMonth} />
-              <CreditCardExpenseDialog selectedMonth={selectedMonth} />
+          <CardHeader className="gap-0 pb-0">
+            <div className="flex items-start justify-between gap-3 pb-3">
+              <div>
+                <CardTitle>Gastos registrados</CardTitle>
+                <CardDescription className="mt-1 capitalize">
+                  {formatReferenceMonth(selectedMonth)}
+                </CardDescription>
+              </div>
               <ExpenseDialog groups={groups} selectedMonth={selectedMonth} />
             </div>
+            <div className="flex flex-col gap-2 border-t border-zinc-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+              <MonthSelector selectedMonth={selectedMonth} />
+              <CreditCardExpenseDialog selectedMonth={selectedMonth} />
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0 sm:p-6 sm:pt-0">
             {groups.length === 0 ? (
-              <div className="flex min-h-56 flex-col items-center justify-center gap-4 text-center">
+              <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-6 pb-6 pt-4 text-center sm:p-0">
                 <ReceiptText className="size-10 text-muted-foreground" />
                 <div>
                   <h2 className="text-lg font-semibold">
@@ -841,62 +858,84 @@ export function ExpensesManager({
               </div>
             ) : expenses.length > 0 ? (
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Descricao</TableHead>
-                    <TableHead>Grupo</TableHead>
-                    <TableHead>Valor</TableHead>
-                    <TableHead className="w-24 text-right">Acoes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {expenses.map((expense) => (
-                    <TableRow key={expense.id}>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {formatDate(expense.spentAt)}
-                      </TableCell>
-                      <TableCell className="font-medium">{expense.title}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline" className="gap-2">
-                            <span
-                              className="size-2 rounded-full"
-                              style={{ backgroundColor: expense.groupColor }}
-                            />
-                            {expense.groupName}
-                          </Badge>
-                          {expense.creditCardPurchaseId &&
-                          expense.installmentNumber &&
-                          expense.installmentCount ? (
-                            <Badge variant="secondary" className="gap-1">
-                              <CreditCard className="size-3" />
-                              {expense.installmentNumber}/{expense.installmentCount}
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium text-red-700">
-                        {formatMoney(expense.amount, currency)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-2">
-                          {expense.creditCardPurchaseId ? null : (
-                            <ExpenseDialog
-                              expense={expense}
-                              groups={groups}
-                              selectedMonth={selectedMonth}
-                            />
-                          )}
-                          <DeleteExpenseButton expense={expense} />
-                        </div>
-                      </TableCell>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="hidden sm:table-cell">Data</TableHead>
+                      <TableHead>Descrição</TableHead>
+                      <TableHead className="hidden sm:table-cell">Grupo</TableHead>
+                      <TableHead>Valor</TableHead>
+                      <TableHead className="w-20 text-right sm:w-24">Ações</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {expenses.map((expense) => (
+                      <TableRow key={expense.id}>
+                        <TableCell className="hidden whitespace-nowrap text-zinc-400 sm:table-cell">
+                          {formatDate(expense.spentAt)}
+                        </TableCell>
+                        <TableCell>
+                          <p className="font-medium">{expense.title}</p>
+                          <p className="mt-0.5 text-xs text-zinc-400 sm:hidden">
+                            {formatDate(expense.spentAt)}
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-1.5 sm:hidden">
+                            <Badge variant="outline" className="gap-1.5 text-xs">
+                              <span
+                                className="size-2 rounded-full"
+                                style={{ backgroundColor: expense.groupColor }}
+                              />
+                              {expense.groupName}
+                            </Badge>
+                            {expense.creditCardPurchaseId &&
+                            expense.installmentNumber &&
+                            expense.installmentCount ? (
+                              <Badge variant="secondary" className="gap-1 text-xs">
+                                <CreditCard className="size-3" />
+                                {expense.installmentNumber}/{expense.installmentCount}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="outline" className="gap-2">
+                              <span
+                                className="size-2 rounded-full"
+                                style={{ backgroundColor: expense.groupColor }}
+                              />
+                              {expense.groupName}
+                            </Badge>
+                            {expense.creditCardPurchaseId &&
+                            expense.installmentNumber &&
+                            expense.installmentCount ? (
+                              <Badge variant="secondary" className="gap-1">
+                                <CreditCard className="size-3" />
+                                {expense.installmentNumber}/{expense.installmentCount}
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium text-red-700">
+                          {formatMoney(expense.amount, currency)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-2">
+                            {expense.creditCardPurchaseId ? null : (
+                              <ExpenseDialog
+                                expense={expense}
+                                groups={groups}
+                                selectedMonth={selectedMonth}
+                              />
+                            )}
+                            <DeleteExpenseButton expense={expense} />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
             ) : (
-              <div className="flex min-h-56 flex-col items-center justify-center gap-4 text-center">
+              <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-6 pb-6 pt-4 text-center sm:p-0">
                 <ReceiptText className="size-10 text-muted-foreground" />
                 <div>
                   <h2 className="text-lg font-semibold">
@@ -1007,37 +1046,61 @@ export function ExpensesManager({
               Comparacao entre o valor planejado e o que ja foi registrado.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {groupTotals.filter((g) => Number(g.monthlyAmount) > 0 || Number(g.spentAmount) > 0).map((group) => {
-              const planned = Number(group.monthlyAmount);
-              const spent = Number(group.spentAmount);
-              const groupRemaining = planned - spent;
-              const percentage = getPercentage(spent, planned);
+          <CardContent className="p-0 sm:p-6 sm:pt-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Grupo</TableHead>
+                  <TableHead className="hidden sm:table-cell text-right">Planejado</TableHead>
+                  <TableHead className="text-right">Gasto</TableHead>
+                  <TableHead className="hidden sm:table-cell text-right">Restante</TableHead>
+                  <TableHead className="w-16 text-right sm:w-20">%</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {groupTotals.filter((g) => Number(g.monthlyAmount) > 0 || Number(g.spentAmount) > 0).map((group) => {
+                  const planned = Number(group.monthlyAmount);
+                  const spent = Number(group.spentAmount);
+                  const groupRemaining = planned - spent;
+                  const percentage = getPercentage(spent, planned);
 
-              return (
-                <div key={group.id} className="grid gap-3 rounded-md border p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span
-                        className="size-3 rounded-full"
-                        style={{ backgroundColor: group.color }}
-                      />
-                      <p className="truncate font-medium">{group.name}</p>
-                    </div>
-                    <Badge variant={percentage > 100 ? "destructive" : "secondary"}>
-                      {new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(percentage)}%
-                    </Badge>
-                  </div>
-                  <Progress value={Math.min(percentage, 100)} />
-                  <div className="flex items-center justify-between gap-3 text-sm">
-                    <span className="text-muted-foreground">Usado / planejado</span>
-                    <span className={groupRemaining < 0 ? "font-medium text-red-700" : "font-medium"}>
-                      {formatMoney(spent, currency)} / {formatMoney(planned, currency)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+                  return (
+                    <TableRow key={group.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="size-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: group.color }}
+                          />
+                          <div>
+                            <p className="font-medium">{group.name}</p>
+                            <p className="text-xs text-muted-foreground sm:hidden">
+                              {formatMoney(planned, currency)} planejado
+                            </p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-muted-foreground">
+                        {formatMoney(planned, currency)}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap font-medium text-red-700">
+                        {formatMoney(spent, currency)}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell text-right whitespace-nowrap">
+                        <span className={groupRemaining < 0 ? "font-medium text-red-700" : "font-medium text-emerald-700"}>
+                          {formatMoney(groupRemaining, currency)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant={percentage > 100 ? "destructive" : "secondary"}>
+                          {new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(percentage)}%
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       ) : null}
