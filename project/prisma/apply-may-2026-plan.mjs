@@ -1,7 +1,6 @@
 import { config } from "dotenv";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
 
 config({ path: ".env.local" });
 config();
@@ -61,10 +60,6 @@ async function main() {
       data: {
         name: "Admin",
         email,
-        passwordHash: await bcrypt.hash(
-          process.env.AUTH_ADMIN_PASSWORD ?? "admin123",
-          12,
-        ),
         monthlyIncome: plannedIncome,
       },
       select: { id: true, email: true },

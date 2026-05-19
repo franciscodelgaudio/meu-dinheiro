@@ -1,6 +1,5 @@
 "use server";
 
-import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 
 import { auth, unstable_update as updateSession } from "@/auth";
@@ -52,7 +51,6 @@ async function getCurrentUser() {
       name: true,
       email: true,
       image: true,
-      passwordHash: true,
     },
   });
 }
@@ -70,11 +68,6 @@ export async function updateProfile(
   const name = normalizeText(formData.get("name")) || null;
   const email = normalizeEmail(formData.get("email"));
   const image = normalizeImage(formData.get("image"));
-  const currentPassword = String(formData.get("currentPassword") ?? "");
-  const newPassword = String(formData.get("newPassword") ?? "");
-  const confirmPassword = String(formData.get("confirmPassword") ?? "");
-  const wantsPasswordChange =
-    currentPassword.length > 0 || newPassword.length > 0 || confirmPassword.length > 0;
 
   if (name && name.length > 80) {
     return { status: "error", message: "O nome pode ter no maximo 80 caracteres." };
@@ -99,50 +92,12 @@ export async function updateProfile(
     }
   }
 
-  let passwordHash = user.passwordHash;
-
-  if (wantsPasswordChange) {
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      return {
-        status: "error",
-        message: "Informe a senha atual, a nova senha e a confirmacao.",
-      };
-    }
-
-    if (!user.passwordHash) {
-      return {
-        status: "error",
-        message: "Esta conta nao possui senha local para alterar.",
-      };
-    }
-
-    const currentPasswordIsValid = await bcrypt.compare(
-      currentPassword,
-      user.passwordHash,
-    );
-
-    if (!currentPasswordIsValid) {
-      return { status: "error", message: "A senha atual esta incorreta." };
-    }
-
-    if (newPassword.length < 8) {
-      return { status: "error", message: "A nova senha deve ter ao menos 8 caracteres." };
-    }
-
-    if (newPassword !== confirmPassword) {
-      return { status: "error", message: "A confirmacao da senha nao confere." };
-    }
-
-    passwordHash = await bcrypt.hash(newPassword, 12);
-  }
-
   const updatedUser = await prisma.user.update({
     where: { id: user.id },
     data: {
       name,
       email,
       image,
-      passwordHash,
     },
     select: {
       name: true,

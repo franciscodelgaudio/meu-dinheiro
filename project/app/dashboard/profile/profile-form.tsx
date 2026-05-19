@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, LockKeyhole, Save, UserRound } from "lucide-react";
+import { Camera, Save, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-
 import { updateProfile, type ProfileActionState } from "./actions";
 
 const initialState: ProfileActionState = {};
@@ -67,7 +65,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
         <CardHeader>
           <CardTitle>Dados do perfil</CardTitle>
           <CardDescription>
-            Atualize nome, email, avatar e credenciais da sua conta.
+            Atualize seu nome, email de exibicao e avatar.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6">
@@ -104,46 +102,6 @@ export function ProfileForm({ user }: ProfileFormProps) {
               defaultValue={user.image ?? ""}
               placeholder="https://exemplo.com/avatar.jpg"
             />
-          </div>
-
-          <Separator />
-
-          <div className="grid gap-4">
-            <div className="flex items-center gap-2">
-              <LockKeyhole className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-medium">Alterar senha</h2>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="grid gap-2">
-                <Label htmlFor="currentPassword">Senha atual</Label>
-                <Input
-                  id="currentPassword"
-                  name="currentPassword"
-                  type="password"
-                  autoComplete="current-password"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="newPassword">Nova senha</Label>
-                <Input
-                  id="newPassword"
-                  name="newPassword"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={8}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="confirmPassword">Confirmar senha</Label>
-                <Input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={8}
-                />
-              </div>
-            </div>
           </div>
 
           <div className="flex justify-end">

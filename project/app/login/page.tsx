@@ -18,7 +18,7 @@ export default async function LoginPage() {
             Acesse sua conta
           </h1>
           <p className="mt-2 text-sm leading-6 text-zinc-600">
-            Use as credenciais configuradas no ambiente da aplicacao.
+            Acesse com sua conta Google para continuar.
           </p>
         </div>
         <LoginForm />

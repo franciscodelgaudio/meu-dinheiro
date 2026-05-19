@@ -1,8 +1,7 @@
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
 import NextAuth from "next-auth";
-import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
 
 export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -12,43 +11,21 @@ export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
   session: {
     strategy: "jwt",
   },
-  providers: [
-    Credentials({
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Senha", type: "password" },
-      },
-      async authorize(credentials) {
-        const email = String(credentials?.email ?? "").trim().toLowerCase();
-        const password = String(credentials?.password ?? "");
-
-        const user = await prisma.user.findUnique({
-          where: { email },
-        });
-
-        if (!user?.passwordHash) {
-          return null;
-        }
-
-        const passwordIsValid = await bcrypt.compare(
-          password,
-          user.passwordHash,
-        );
-
-        if (passwordIsValid) {
-          return {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            image: user.image,
-          };
-        }
-
-        return null;
-      },
-    }),
-  ],
+  providers: [Google({ allowDangerousEmailAccountLinking: true })],
   callbacks: {
+    async signIn({ user, account, profile }) {
+      if (account?.provider === "google" && profile && user.id) {
+        const name = typeof profile.name === "string" ? profile.name : null;
+        const image = typeof profile.picture === "string" ? profile.picture : null;
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { name, image },
+        });
+        user.name = name;
+        user.image = image;
+      }
+      return true;
+    },
     jwt({ token, user, trigger, session }) {
       if (user) {
         token.name = user.name;

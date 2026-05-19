@@ -11,6 +11,34 @@ type ExpensesPageProps = {
   }>;
 };
 
+function isActiveInMonth(repeatMonths: string | null, targetMonth: string) {
+  if (!repeatMonths) return true;
+  const monthNum = Number(targetMonth.split("-")[1]);
+  return repeatMonths.split(",").map(Number).includes(monthNum);
+}
+
+function isGroupActiveInMonth(
+  repeatMonths: string | null,
+  targetMonth: string,
+) {
+  return isActiveInMonth(repeatMonths, targetMonth);
+}
+
+function findActiveSavings<
+  T extends { referenceMonth: string; affectsFutureMonths: boolean; repeatMonths: string | null },
+>(entries: T[], targetMonth: string): T | null {
+  const direct = entries.find((s) => s.referenceMonth === targetMonth);
+  if (direct) return direct;
+  return (
+    entries.find(
+      (s) =>
+        s.affectsFutureMonths &&
+        s.referenceMonth < targetMonth &&
+        isActiveInMonth(s.repeatMonths, targetMonth),
+    ) ?? null
+  );
+}
+
 function getCurrentReferenceMonth() {
   const now = new Date();
 
@@ -92,8 +120,12 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       prisma.savingsAllocation.findMany({
         where: {
           userId: user.id,
-          referenceMonth: { gte: firstMonth, lte: lastMonth },
+          OR: [
+            { referenceMonth: { gte: firstMonth, lte: lastMonth } },
+            { affectsFutureMonths: true, referenceMonth: { lt: firstMonth } },
+          ],
         },
+        orderBy: { referenceMonth: "desc" },
       }),
     ]);
 
@@ -103,7 +135,9 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       const activeGroups = yearGroups.filter(
         (g) =>
           g.referenceMonth === month ||
-          (g.affectsFutureMonths && g.referenceMonth < month),
+          (g.affectsFutureMonths &&
+            g.referenceMonth < month &&
+            isGroupActiveInMonth(g.repeatMonths, month)),
       );
 
       const totalExpenses = activeGroups.reduce((sum, g) => {
@@ -111,12 +145,14 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         return sum + Number(override?.monthlyAmount ?? g.monthlyAmount);
       }, 0);
 
+      if (totalExpenses === 0) return null;
+
       const totalExtraIncome = yearExtraIncomes
         .filter((e) => e.referenceMonth === month)
         .reduce((sum, e) => sum + Number(e.amount), 0);
 
       const savings = Number(
-        yearSavings.find((s) => s.referenceMonth === month)?.amount ?? 0,
+        findActiveSavings(yearSavings, month)?.amount ?? 0,
       );
 
       const totalIncome = base + totalExtraIncome;
@@ -132,7 +168,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         totalCommitments,
         remaining,
       };
-    });
+    }).filter((row): row is YearMonthSummary => row !== null);
   }
 
   const expenseGroups = await prisma.expenseGroup.findMany({
@@ -155,15 +191,24 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     where: { userId: user.id, referenceMonth: selectedMonth },
     orderBy: { createdAt: "desc" },
   });
-  const savingsAllocation = await prisma.savingsAllocation.findUnique({
+  const savingsEntries = await prisma.savingsAllocation.findMany({
     where: {
-      userId_referenceMonth: {
-        userId: user.id,
-        referenceMonth: selectedMonth,
-      },
+      userId: user.id,
+      OR: [
+        { referenceMonth: selectedMonth },
+        { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
+      ],
     },
+    orderBy: { referenceMonth: "desc" },
   });
-  const groups = expenseGroups.map((group) => {
+  const savingsAllocation = findActiveSavings(savingsEntries, selectedMonth);
+  const activeExpenseGroups = expenseGroups.filter(
+    (g) =>
+      g.referenceMonth === selectedMonth ||
+      isGroupActiveInMonth(g.repeatMonths, selectedMonth),
+  );
+
+  const groups = activeExpenseGroups.map((group) => {
     const override = group.overrides[0];
 
     return {
@@ -172,6 +217,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       name: override?.name ?? group.name,
       monthlyAmount: (override?.monthlyAmount ?? group.monthlyAmount).toString(),
       affectsFutureMonths: group.affectsFutureMonths,
+      repeatMonths: group.repeatMonths,
       color: override?.color ?? group.color,
       description: override ? override.description : group.description,
       priority: group.priority,
@@ -191,6 +237,8 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         id: savingsAllocation.id,
         referenceMonth: savingsAllocation.referenceMonth,
         amount: savingsAllocation.amount.toString(),
+        affectsFutureMonths: savingsAllocation.affectsFutureMonths,
+        repeatMonths: savingsAllocation.repeatMonths,
         description: savingsAllocation.description,
         updatedAt: savingsAllocation.updatedAt.toISOString(),
       }

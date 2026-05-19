@@ -17,6 +17,7 @@ type ExpenseGroupInput = {
   name: string;
   monthlyAmount: string;
   affectsFutureMonths: boolean;
+  repeatMonths: string | null;
   color: string;
   description: string | null;
   priority: string;
@@ -32,6 +33,8 @@ type ExtraIncomeInput = {
 type SavingsAllocationInput = {
   referenceMonth: string;
   amount: string;
+  affectsFutureMonths: boolean;
+  repeatMonths: string | null;
   description: string | null;
 };
 
@@ -80,11 +83,25 @@ function parseExpenseGroupInput(formData: FormData): ExpenseGroupInput | string 
     return "Escolha uma cor valida para o grupo.";
   }
 
+  let repeatMonths: string | null = null;
+  if (affectsFutureMonths) {
+    const raw = formData.getAll("repeatMonth").map((v) => Number(String(v)));
+    const valid = [...new Set(raw.filter((n) => n >= 1 && n <= 12))].sort(
+      (a, b) => a - b,
+    );
+    if (valid.length === 0 || valid.length === 12) {
+      repeatMonths = null;
+    } else {
+      repeatMonths = valid.join(",");
+    }
+  }
+
   return {
     referenceMonth,
     name,
     monthlyAmount: monthlyAmount.toFixed(2),
     affectsFutureMonths,
+    repeatMonths,
     color,
     description,
     priority,
@@ -129,6 +146,8 @@ function parseSavingsAllocationInput(
     .replace(",", ".");
   const amount = Number(amountText);
   const description = String(formData.get("description") ?? "").trim() || null;
+  const affectsFutureMonths =
+    String(formData.get("affectsFutureMonths") ?? "") === "on";
 
   if (!/^\d{4}-\d{2}$/.test(referenceMonth)) {
     return "Escolha um mes de referencia valido.";
@@ -138,9 +157,22 @@ function parseSavingsAllocationInput(
     return "Informe um valor de poupanca valido.";
   }
 
+  let repeatMonths: string | null = null;
+  if (affectsFutureMonths) {
+    const raw = formData.getAll("repeatMonth").map((v) => Number(String(v)));
+    const valid = [...new Set(raw.filter((n) => n >= 1 && n <= 12))].sort(
+      (a, b) => a - b,
+    );
+    if (valid.length > 0 && valid.length < 12) {
+      repeatMonths = valid.join(",");
+    }
+  }
+
   return {
     referenceMonth,
     amount: amount.toFixed(2),
+    affectsFutureMonths,
+    repeatMonths,
     description,
   };
 }
@@ -164,7 +196,14 @@ export async function createExpenseGroup(
   await prisma.expenseGroup.create({
     data: {
       userId,
-      ...input,
+      referenceMonth: input.referenceMonth,
+      name: input.name,
+      monthlyAmount: input.monthlyAmount,
+      affectsFutureMonths: input.affectsFutureMonths,
+      repeatMonths: input.repeatMonths,
+      color: input.color,
+      description: input.description,
+      priority: input.priority,
     },
   });
 
@@ -219,42 +258,70 @@ export async function updateExpenseGroup(
     };
   }
 
-  await prisma.$transaction([
-    prisma.expenseGroup.update({
-      where: { id: existingGroup.id },
-      data: { priority: input.priority },
-    }),
-    prisma.expenseGroupOverride.upsert({
-      where: {
-        expenseGroupId_referenceMonth: {
+  const scope = String(formData.get("scope") ?? "this-month").trim();
+  const applyFromNow = scope === "from-this-month";
+
+  if (applyFromNow) {
+    await prisma.$transaction([
+      prisma.expenseGroup.update({
+        where: { id: existingGroup.id },
+        data: {
+          name: input.name,
+          monthlyAmount: input.monthlyAmount,
+          repeatMonths: input.repeatMonths,
+          color: input.color,
+          description: input.description,
+          priority: input.priority,
+        },
+      }),
+      prisma.expenseGroupOverride.deleteMany({
+        where: {
+          expenseGroupId: existingGroup.id,
+          userId,
+          referenceMonth: { gte: input.referenceMonth },
+        },
+      }),
+    ]);
+  } else {
+    await prisma.$transaction([
+      prisma.expenseGroup.update({
+        where: { id: existingGroup.id },
+        data: { priority: input.priority },
+      }),
+      prisma.expenseGroupOverride.upsert({
+        where: {
+          expenseGroupId_referenceMonth: {
+            expenseGroupId: existingGroup.id,
+            referenceMonth: input.referenceMonth,
+          },
+        },
+        create: {
+          userId,
           expenseGroupId: existingGroup.id,
           referenceMonth: input.referenceMonth,
+          name: input.name,
+          monthlyAmount: input.monthlyAmount,
+          color: input.color,
+          description: input.description,
         },
-      },
-      create: {
-        userId,
-        expenseGroupId: existingGroup.id,
-        referenceMonth: input.referenceMonth,
-        name: input.name,
-        monthlyAmount: input.monthlyAmount,
-        color: input.color,
-        description: input.description,
-      },
-      update: {
-        name: input.name,
-        monthlyAmount: input.monthlyAmount,
-        color: input.color,
-        description: input.description,
-      },
-    }),
-  ]);
+        update: {
+          name: input.name,
+          monthlyAmount: input.monthlyAmount,
+          color: input.color,
+          description: input.description,
+        },
+      }),
+    ]);
+  }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
   revalidatePath("/dashboard/expenses");
   return {
     status: "success",
-    message: "Grupo de despesa atualizado apenas neste mes.",
+    message: applyFromNow
+      ? "Grupo atualizado a partir deste mes."
+      : "Grupo atualizado apenas neste mes.",
   };
 }
 
@@ -386,10 +453,16 @@ export async function saveSavingsAllocation(
     },
     create: {
       userId,
-      ...input,
+      referenceMonth: input.referenceMonth,
+      amount: input.amount,
+      affectsFutureMonths: input.affectsFutureMonths,
+      repeatMonths: input.repeatMonths,
+      description: input.description,
     },
     update: {
       amount: input.amount,
+      affectsFutureMonths: input.affectsFutureMonths,
+      repeatMonths: input.repeatMonths,
       description: input.description,
     },
   });
@@ -400,7 +473,7 @@ export async function saveSavingsAllocation(
 }
 
 export async function deleteSavingsAllocation(
-  referenceMonth: string,
+  id: string,
 ): Promise<SavingsAllocationActionState> {
   const userId = await getCurrentUserId();
 
@@ -409,7 +482,7 @@ export async function deleteSavingsAllocation(
   }
 
   const result = await prisma.savingsAllocation.deleteMany({
-    where: { userId, referenceMonth },
+    where: { id, userId },
   });
 
   if (result.count === 0) {
@@ -418,5 +491,5 @@ export async function deleteSavingsAllocation(
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
-  return { status: "success", message: "Poupanca removida deste mes." };
+  return { status: "success", message: "Poupanca removida." };
 }

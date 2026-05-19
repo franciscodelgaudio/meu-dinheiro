@@ -73,6 +73,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 const initialState: ExpenseGroupActionState = {};
 
@@ -84,6 +85,7 @@ export type ExpenseGroupView = {
   name: string;
   monthlyAmount: string;
   affectsFutureMonths: boolean;
+  repeatMonths: string | null;
   color: string;
   description: string | null;
   priority: string;
@@ -103,6 +105,8 @@ export type SavingsAllocationView = {
   id: string;
   referenceMonth: string;
   amount: string;
+  affectsFutureMonths: boolean;
+  repeatMonths: string | null;
   description: string | null;
   updatedAt: string;
 };
@@ -463,6 +467,96 @@ function MonthSelector({ selectedMonth }: { selectedMonth: string }) {
   );
 }
 
+const ALL_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+function parseRepeatMonthsToArray(repeatMonths: string | null): number[] {
+  if (!repeatMonths) return ALL_MONTHS;
+  return repeatMonths.split(",").map(Number);
+}
+
+function formatRepeatMonthsLabel(repeatMonths: string | null): string | null {
+  if (!repeatMonths) return null;
+  const nums = repeatMonths.split(",").map(Number);
+  const names = nums.map((n) => MONTH_LABELS[n - 1]);
+  if (names.length <= 4) return names.join(", ");
+  return `${names.slice(0, 3).join(", ")} +${names.length - 3}`;
+}
+
+function MonthRepeatPicker({
+  selected,
+  onChange,
+}: {
+  selected: number[];
+  onChange: (v: number[]) => void;
+}) {
+  function toggle(num: number) {
+    if (selected.includes(num)) {
+      if (selected.length === 1) return;
+      onChange(selected.filter((m) => m !== num));
+    } else {
+      onChange([...selected, num].sort((a, b) => a - b));
+    }
+  }
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">Meses ativos</span>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            onClick={() => onChange(ALL_MONTHS)}
+          >
+            Todos
+          </button>
+          <span className="text-xs text-muted-foreground">·</span>
+          <button
+            type="button"
+            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            onClick={() => onChange([1, 3, 5, 7, 9, 11])}
+          >
+            Impares
+          </button>
+          <span className="text-xs text-muted-foreground">·</span>
+          <button
+            type="button"
+            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            onClick={() => onChange([2, 4, 6, 8, 10, 12])}
+          >
+            Pares
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-4 gap-1">
+        {ALL_MONTHS.map((num) => {
+          const active = selected.includes(num);
+          return (
+            <button
+              key={num}
+              type="button"
+              onClick={() => toggle(num)}
+              className={cn(
+                "rounded-md border px-2 py-1.5 text-sm transition-colors",
+                active
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "hover:bg-muted",
+              )}
+            >
+              {MONTH_LABELS[num - 1]}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {selected.length === 12
+          ? "Ativo todos os meses."
+          : `Ativo em ${selected.length} de 12 meses.`}
+      </p>
+    </div>
+  );
+}
+
 function ExpenseGroupDialog({
   group,
   selectedMonth,
@@ -475,8 +569,20 @@ function ExpenseGroupDialog({
   const [affectsFutureMonths, setAffectsFutureMonths] = useState(
     group?.affectsFutureMonths ?? false,
   );
+  const [scope, setScope] = useState<"this-month" | "from-this-month">("this-month");
+  const [selectedRepeatMonths, setSelectedRepeatMonths] = useState<number[]>(
+    parseRepeatMonthsToArray(group?.repeatMonths ?? null),
+  );
   const action = group ? updateExpenseGroup : createExpenseGroup;
   const [state, formAction, isPending] = useActionState(action, initialState);
+
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      setScope("this-month");
+      setSelectedRepeatMonths(parseRepeatMonthsToArray(group?.repeatMonths ?? null));
+    }
+    setOpen(next);
+  }
 
   useEffect(() => {
     if (!state.status || !state.message) {
@@ -496,7 +602,7 @@ function ExpenseGroupDialog({
   }, [router, state]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {group ? (
           <Button variant="outline" size="icon-sm" aria-label="Editar grupo">
@@ -531,6 +637,14 @@ function ExpenseGroupDialog({
             name="affectsFutureMonths"
             value={affectsFutureMonths ? "on" : ""}
           />
+          {group && group.affectsFutureMonths ? (
+            <input type="hidden" name="scope" value={scope} />
+          ) : null}
+          {((!group && affectsFutureMonths) ||
+            (group && group.affectsFutureMonths && scope === "from-this-month")) &&
+            selectedRepeatMonths.map((m) => (
+              <input key={m} type="hidden" name="repeatMonth" value={m} />
+            ))}
 
           <div className="grid gap-4 sm:grid-cols-[1fr_150px]">
             <div className="grid gap-2">
@@ -572,33 +686,86 @@ function ExpenseGroupDialog({
           </div>
 
           {group ? (
-            <div className="grid gap-1.5 rounded-md border p-3">
-              <p className="text-sm font-medium">
-                Edicao apenas em {formatReferenceMonth(selectedMonth)}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                A recorrencia do grupo continua, mas os dados salvos aqui ficam
-                somente neste mes.
-              </p>
-            </div>
-          ) : (
-            <div className="flex items-start gap-3 rounded-md border p-3">
-              <Checkbox
-                id="affectsFutureMonths-new"
-                checked={affectsFutureMonths}
-                onCheckedChange={(checked) =>
-                  setAffectsFutureMonths(checked === true)
-                }
-              />
-              <div className="grid gap-1.5">
-                <Label htmlFor="affectsFutureMonths-new">
-                  Afeta os proximos meses
-                </Label>
+            group.affectsFutureMonths ? (
+              <div className="grid gap-3">
+                <div className="grid gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScope("this-month")}
+                    className={cn(
+                      "grid gap-1 rounded-md border p-3 text-left transition-colors hover:bg-muted/50",
+                      scope === "this-month" && "border-primary bg-muted/30",
+                    )}
+                  >
+                    <p className="text-sm font-medium">
+                      Apenas em {formatReferenceMonth(selectedMonth)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      A recorrencia continua, mas os dados ficam so neste mes.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScope("from-this-month")}
+                    className={cn(
+                      "grid gap-1 rounded-md border p-3 text-left transition-colors hover:bg-muted/50",
+                      scope === "from-this-month" && "border-primary bg-muted/30",
+                    )}
+                  >
+                    <p className="text-sm font-medium">
+                      A partir de {formatReferenceMonth(selectedMonth)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Atualiza o grupo base e apaga personalizacoes deste mes em
+                      diante.
+                    </p>
+                  </button>
+                </div>
+                {scope === "from-this-month" && (
+                  <MonthRepeatPicker
+                    selected={selectedRepeatMonths}
+                    onChange={setSelectedRepeatMonths}
+                  />
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-1.5 rounded-md border p-3">
+                <p className="text-sm font-medium">
+                  Edicao apenas em {formatReferenceMonth(selectedMonth)}
+                </p>
                 <p className="text-sm text-muted-foreground">
-                  Quando marcado, este grupo e copiado para os meses seguintes.
-                  Cada mes pode ser editado depois com seu proprio valor.
+                  Grupo nao recorrente — os dados ficam somente neste mes.
                 </p>
               </div>
+            )
+          ) : (
+            <div className="grid gap-3">
+              <div className="flex items-start gap-3 rounded-md border p-3">
+                <Checkbox
+                  id="affectsFutureMonths-new"
+                  checked={affectsFutureMonths}
+                  onCheckedChange={(checked) => {
+                    setAffectsFutureMonths(checked === true);
+                    if (!checked) setSelectedRepeatMonths(ALL_MONTHS);
+                  }}
+                />
+                <div className="grid gap-1.5">
+                  <Label htmlFor="affectsFutureMonths-new">
+                    Afeta os proximos meses
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Quando marcado, este grupo e copiado para os meses
+                    seguintes. Cada mes pode ser editado depois com seu
+                    proprio valor.
+                  </p>
+                </div>
+              </div>
+              {affectsFutureMonths && (
+                <MonthRepeatPicker
+                  selected={selectedRepeatMonths}
+                  onChange={setSelectedRepeatMonths}
+                />
+              )}
             </div>
           )}
 
@@ -754,10 +921,26 @@ function SavingsAllocationDialog({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [affectsFutureMonths, setAffectsFutureMonths] = useState(
+    savingsAllocation?.affectsFutureMonths ?? false,
+  );
+  const [selectedRepeatMonths, setSelectedRepeatMonths] = useState<number[]>(
+    parseRepeatMonthsToArray(savingsAllocation?.repeatMonths ?? null),
+  );
   const [state, formAction, isPending] = useActionState(
     saveSavingsAllocation,
     initialState,
   );
+
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      setAffectsFutureMonths(savingsAllocation?.affectsFutureMonths ?? false);
+      setSelectedRepeatMonths(
+        parseRepeatMonthsToArray(savingsAllocation?.repeatMonths ?? null),
+      );
+    }
+    setOpen(next);
+  }
 
   useEffect(() => {
     if (!state.status || !state.message) {
@@ -777,7 +960,7 @@ function SavingsAllocationDialog({
   }, [router, state]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline">
           <PiggyBank />
@@ -794,6 +977,15 @@ function SavingsAllocationDialog({
 
         <form action={formAction} className="grid gap-5">
           <input type="hidden" name="referenceMonth" value={selectedMonth} />
+          <input
+            type="hidden"
+            name="affectsFutureMonths"
+            value={affectsFutureMonths ? "on" : ""}
+          />
+          {affectsFutureMonths &&
+            selectedRepeatMonths.map((m) => (
+              <input key={m} type="hidden" name="repeatMonth" value={m} />
+            ))}
 
           <div className="grid gap-2">
             <Label htmlFor="savings-amount">Valor para guardar</Label>
@@ -806,6 +998,34 @@ function SavingsAllocationDialog({
               defaultValue={savingsAllocation?.amount ?? "0.00"}
               required
             />
+          </div>
+
+          <div className="grid gap-3">
+            <div className="flex items-start gap-3 rounded-md border p-3">
+              <Checkbox
+                id="savings-affectsFutureMonths"
+                checked={affectsFutureMonths}
+                onCheckedChange={(checked) => {
+                  setAffectsFutureMonths(checked === true);
+                  if (!checked) setSelectedRepeatMonths(ALL_MONTHS);
+                }}
+              />
+              <div className="grid gap-1.5">
+                <Label htmlFor="savings-affectsFutureMonths">
+                  Repetir nos proximos meses
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Quando marcado, esta poupanca e aplicada nos meses seguintes
+                  conforme os meses selecionados.
+                </p>
+              </div>
+            </div>
+            {affectsFutureMonths && (
+              <MonthRepeatPicker
+                selected={selectedRepeatMonths}
+                onChange={setSelectedRepeatMonths}
+              />
+            )}
           </div>
 
           <div className="grid gap-2">
@@ -898,16 +1118,16 @@ function DeleteExtraIncomeButton({ income }: { income: ExtraIncomeView }) {
 }
 
 function DeleteSavingsAllocationButton({
-  selectedMonth,
+  savingsId,
 }: {
-  selectedMonth: string;
+  savingsId: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   function handleDelete() {
     startTransition(async () => {
-      const result = await deleteSavingsAllocation(selectedMonth);
+      const result = await deleteSavingsAllocation(savingsId);
 
       if (result.status === "success") {
         toast.success(result.message);
@@ -923,7 +1143,7 @@ function DeleteSavingsAllocationButton({
     <Button
       variant="outline"
       size="icon-sm"
-      aria-label="Remover poupanca do mes"
+      aria-label="Remover poupanca"
       onClick={handleDelete}
       disabled={isPending}
     >
@@ -1187,13 +1407,20 @@ export function ExpenseGroupsManager({
                                 className="size-3 rounded-full"
                                 style={{ backgroundColor: group.color }}
                               />
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium">{group.name}</p>
-                                {group.priority === "high" && (
-                                  <Badge variant="default" className="text-xs">Alta</Badge>
-                                )}
-                                {group.priority === "low" && (
-                                  <Badge variant="outline" className="text-xs text-muted-foreground">Baixa</Badge>
+                              <div className="grid gap-0.5">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium">{group.name}</p>
+                                  {group.priority === "high" && (
+                                    <Badge variant="default" className="text-xs">Alta</Badge>
+                                  )}
+                                  {group.priority === "low" && (
+                                    <Badge variant="outline" className="text-xs text-muted-foreground">Baixa</Badge>
+                                  )}
+                                </div>
+                                {group.repeatMonths && (
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatRepeatMonthsLabel(group.repeatMonths)}
+                                  </p>
                                 )}
                               </div>
                             </div>
@@ -1348,6 +1575,19 @@ export function ExpenseGroupsManager({
                       {savingsAllocation?.description ||
                         "Valor separado da sobra planejada deste mes."}
                     </p>
+                    {savingsAllocation?.repeatMonths && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {formatRepeatMonthsLabel(savingsAllocation.repeatMonths)}
+                      </p>
+                    )}
+                    {savingsAllocation?.affectsFutureMonths &&
+                      !savingsAllocation.repeatMonths &&
+                      savingsAllocation.referenceMonth !== selectedMonth && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Recorrente desde{" "}
+                          {formatReferenceMonth(savingsAllocation.referenceMonth)}
+                        </p>
+                      )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1355,7 +1595,7 @@ export function ExpenseGroupsManager({
                     {formatMoney(savingsAmount, currency)}
                   </span>
                   {savingsAllocation ? (
-                    <DeleteSavingsAllocationButton selectedMonth={selectedMonth} />
+                    <DeleteSavingsAllocationButton savingsId={savingsAllocation.id} />
                   ) : null}
                 </div>
               </div>
