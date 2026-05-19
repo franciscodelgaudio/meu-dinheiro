@@ -222,7 +222,7 @@ Responda SOMENTE com este JSON (sem markdown, sem \`\`\`):
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between gap-2 text-base">
+            <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
               <span className="flex items-center gap-2">
                 <Calendar className="size-4 text-muted-foreground" />
                 Fim de semana

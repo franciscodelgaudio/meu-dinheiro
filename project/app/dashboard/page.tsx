@@ -206,7 +206,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       </header>
 
       {/* 4 metric cards */}
-      <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {/* Renda total */}
         <Card className="border-zinc-200 shadow-sm">
           <CardHeader className="pb-2">
@@ -218,13 +218,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-zinc-950">{fmt.format(totalIncome)}</p>
+            <p className="text-lg font-bold text-zinc-950 sm:text-2xl">{fmt.format(totalIncome)}</p>
             {extraIncome > 0 ? (
-              <p className="mt-1 text-xs text-zinc-400">
+              <p className="mt-1 hidden text-xs text-zinc-400 sm:block">
                 Base {fmt.format(baseIncome)} + extra {fmt.format(extraIncome)}
               </p>
             ) : (
-              <p className="mt-1 text-xs text-zinc-400">Renda base do mês</p>
+              <p className="mt-1 hidden text-xs text-zinc-400 sm:block">Renda base do mês</p>
             )}
           </CardContent>
         </Card>
@@ -240,8 +240,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-zinc-950">{fmt.format(totalExpenses)}</p>
-            <p className="mt-1 text-xs text-zinc-400">
+            <p className="text-lg font-bold text-zinc-950 sm:text-2xl">{fmt.format(totalExpenses)}</p>
+            <p className="mt-1 hidden text-xs text-zinc-400 sm:block">
               {expenseGroups.length} grupo{expenseGroups.length !== 1 ? "s" : ""} no mês
             </p>
           </CardContent>
@@ -262,13 +262,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-zinc-950">{fmt.format(totalActualSpent)}</p>
+            <p className="text-lg font-bold text-zinc-950 sm:text-2xl">{fmt.format(totalActualSpent)}</p>
             <div className="mt-2 space-y-1">
               <div className="flex justify-between text-xs text-zinc-400">
-                <span>
+                <span className="hidden sm:inline">
                   {actualExpenseCount} lançamento{actualExpenseCount !== 1 ? "s" : ""}
                 </span>
-                <span>{spentPct.toFixed(0)}% do planejado</span>
+                <span>{spentPct.toFixed(0)}%</span>
               </div>
               <Progress value={spentPct} className="h-1.5" />
             </div>
@@ -293,13 +293,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </CardHeader>
           <CardContent>
             <p
-              className={`text-2xl font-bold ${
+              className={`text-lg font-bold sm:text-2xl ${
                 remaining >= 0 ? "text-emerald-700" : "text-red-600"
               }`}
             >
               {fmt.format(remaining)}
             </p>
-            <p className="mt-1 text-xs text-zinc-400">
+            <p className="mt-1 hidden text-xs text-zinc-400 sm:block">
               {remaining >= 0 ? "Após gastos, poupança e dívidas" : "Orçamento excedido"}
             </p>
           </CardContent>
