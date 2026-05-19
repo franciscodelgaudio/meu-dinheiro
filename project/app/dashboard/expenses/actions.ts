@@ -293,7 +293,7 @@ async function syncCreditCardMonthlyAmount(
     const idx = getMonthDistance(purchase.firstInstallmentMonth, referenceMonth);
 
     if (idx >= 0 && idx < purchase.installmentCount) {
-      const amounts = getInstallmentAmounts(purchase.totalAmount.toString(), purchase.installmentCount);
+      const amounts = getInstallmentAmounts(Number(purchase.totalAmount), purchase.installmentCount);
       totalValue += Number(amounts[idx] ?? 0);
     }
   }
