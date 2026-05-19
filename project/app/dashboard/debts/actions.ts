@@ -2,6 +2,7 @@
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 export type DebtActionState = {
@@ -178,7 +179,16 @@ async function syncDebtMonthlyAmount(
     },
     _sum: { amount: true },
   });
-  const monthlyAmount = (total._sum.amount ?? 0).toString();
+  const totalValue = total._sum.amount ?? 0;
+
+  if (totalValue === 0) {
+    await prisma.expenseGroupOverride.deleteMany({
+      where: { expenseGroupId, referenceMonth },
+    });
+    return;
+  }
+
+  const monthlyAmount = totalValue.toString();
 
   await prisma.expenseGroupOverride.upsert({
     where: {
@@ -242,7 +252,7 @@ export async function createDebt(
     addMonths(input.firstInstallmentMonth, index),
   );
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const commitment = await tx.creditCardPurchase.create({
       data: {
         userId,
@@ -336,7 +346,7 @@ export async function updateDebt(
     addMonths(input.firstInstallmentMonth, index),
   );
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.expense.deleteMany({
       where: { userId, creditCardPurchaseId: existing.id },
     });
