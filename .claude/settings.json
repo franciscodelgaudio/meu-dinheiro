@@ -13,7 +13,9 @@
       "Bash(node prisma/link-google-account.mjs)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Admin\\\\MeuDinheiro\" -Force)",
       "PowerShell(tree \"c:\\\\Users\\\\Admin\\\\MeuDinheiro\\\\project\" -L 3 -I \"node_modules|.next\" 2>$null)",
-      "PowerShell(head -80)"
+      "PowerShell(head -80)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Admin\\\\MeuDinheiro\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }

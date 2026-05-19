@@ -51,7 +51,7 @@ const items = [
     icon: ReceiptText,
   },
   {
-    title: "Dividas",
+    title: "Dívidas",
     href: "/dashboard/debts",
     icon: HandCoins,
   },
@@ -75,12 +75,14 @@ export function AppSidebar({ user }: AppSidebarProps) {
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg" tooltip="MeuDinheiro">
               <Link href="/dashboard">
-                <span className="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+                <span className="flex aspect-square size-8 items-center justify-center rounded-md bg-emerald-600 text-white">
                   <Wallet className="size-4" />
                 </span>
                 <span className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">MeuDinheiro</span>
-                  <span className="truncate text-xs">Controle financeiro</span>
+                  <span className="truncate font-bold">
+                    Meu<span className="text-emerald-600">Dinheiro</span>
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">Controle financeiro</span>
                 </span>
               </Link>
             </SidebarMenuButton>
@@ -90,7 +92,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navegacao</SidebarGroupLabel>
+          <SidebarGroupLabel>Navegação</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => (
