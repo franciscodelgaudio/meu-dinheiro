@@ -11,6 +11,7 @@ import {
   ReceiptText,
   Send,
   Sparkles,
+  Wand2,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -95,10 +96,20 @@ export type ExpenseView = {
   installmentCount?: number | null;
 };
 
+export type CommonExpenseTemplate = {
+  title: string;
+  amount: string;
+  behaviorType: string;
+  coverageDays: number;
+  expenseGroupId: string;
+  count: number;
+};
+
 type ExpensesManagerProps = {
   groups: ExpenseGroupOption[];
   groupTotals: ExpenseGroupTotal[];
   expenses: ExpenseView[];
+  commonExpenses: CommonExpenseTemplate[];
   selectedMonth: string;
   currency: string;
   paydayStart: number | null;
@@ -491,19 +502,47 @@ function QuickExpenseCapture({
 function ExpenseDialog({
   expense,
   groups,
+  commonExpenses,
+  currency,
   selectedMonth,
 }: {
   expense?: ExpenseView;
   groups: ExpenseGroupOption[];
+  commonExpenses?: CommonExpenseTemplate[];
+  currency: string;
   selectedMonth: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const defaultSpentAt = expense
+    ? formatDateInput(expense.spentAt)
+    : getDefaultSpentAt(selectedMonth);
   const [selectedGroupId, setSelectedGroupId] = useState(
     expense?.expenseGroupId ?? groups[0]?.id ?? "",
   );
+  const [spentAt, setSpentAt] = useState(defaultSpentAt);
+  const [title, setTitle] = useState(expense?.title ?? "");
+  const [amount, setAmount] = useState(expense?.amount ?? "");
+  const [behaviorType, setBehaviorType] = useState(
+    expense?.behaviorType ?? "single",
+  );
+  const [coverageDays, setCoverageDays] = useState(
+    String(expense?.coverageDays ?? 1),
+  );
   const action = expense ? updateExpense : createExpense;
   const [state, formAction, isPending] = useActionState(action, initialState);
+  const groupById = useMemo(
+    () => new Map(groups.map((group) => [group.id, group])),
+    [groups],
+  );
+
+  function applyTemplate(template: CommonExpenseTemplate) {
+    setTitle(template.title);
+    setAmount(template.amount);
+    setSelectedGroupId(template.expenseGroupId);
+    setBehaviorType(template.behaviorType);
+    setCoverageDays(String(template.coverageDays));
+  }
 
   useEffect(() => {
     if (!state.status || !state.message) {
@@ -547,8 +586,39 @@ function ExpenseDialog({
         <form action={formAction} className="grid gap-5">
           {expense ? <input type="hidden" name="id" value={expense.id} /> : null}
           <input type="hidden" name="expenseGroupId" value={selectedGroupId} />
-          <input type="hidden" name="behaviorType" value="single" />
-          <input type="hidden" name="coverageDays" value="1" />
+          <input type="hidden" name="behaviorType" value={behaviorType} />
+          <input type="hidden" name="coverageDays" value={coverageDays} />
+
+          {!expense && commonExpenses && commonExpenses.length > 0 ? (
+            <div className="grid gap-2 rounded-md border bg-muted/30 p-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Wand2 className="size-4 text-emerald-600" />
+                Entradas comuns
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {commonExpenses.map((template) => {
+                  const group = groupById.get(template.expenseGroupId);
+
+                  return (
+                    <button
+                      key={`${template.title}-${template.expenseGroupId}`}
+                      type="button"
+                      onClick={() => applyTemplate(template)}
+                      className="grid min-h-20 gap-1 rounded-md border bg-background p-3 text-left text-sm transition hover:border-emerald-300 hover:bg-emerald-50/60"
+                    >
+                      <span className="truncate font-medium">{template.title}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {group?.name ?? "Grupo"}
+                      </span>
+                      <span className="text-xs font-medium text-emerald-700">
+                        {formatMoney(template.amount, currency)} · {template.count}x
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
             <div className="grid gap-2">
@@ -557,11 +627,8 @@ function ExpenseDialog({
                 id={`spentAt-${expense?.id ?? "new"}`}
                 name="spentAt"
                 type="date"
-                defaultValue={
-                  expense
-                    ? formatDateInput(expense.spentAt)
-                    : getDefaultSpentAt(selectedMonth)
-                }
+                value={spentAt}
+                onChange={(event) => setSpentAt(event.target.value)}
                 required
               />
             </div>
@@ -572,7 +639,8 @@ function ExpenseDialog({
               <Input
                 id={`title-${expense?.id ?? "new"}`}
                 name="title"
-                defaultValue={expense?.title ?? ""}
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
                 placeholder="Mercado, aluguel, aplicativo..."
                 required
               />
@@ -607,7 +675,8 @@ function ExpenseDialog({
                 type="number"
                 min="0"
                 step="0.01"
-                defaultValue={expense?.amount ?? ""}
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
                 placeholder="0,00"
                 required
               />
@@ -800,6 +869,7 @@ export function ExpensesManager({
   groups,
   groupTotals,
   expenses,
+  commonExpenses,
   selectedMonth,
   currency,
   paydayStart,
@@ -835,7 +905,12 @@ export function ExpensesManager({
                   {formatReferenceMonth(selectedMonth)}
                 </CardDescription>
               </div>
-              <ExpenseDialog groups={groups} selectedMonth={selectedMonth} />
+              <ExpenseDialog
+                groups={groups}
+                commonExpenses={commonExpenses}
+                currency={currency}
+                selectedMonth={selectedMonth}
+              />
             </div>
             <div className="flex flex-col gap-2 border-t border-zinc-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
               <MonthSelector selectedMonth={selectedMonth} />
@@ -924,6 +999,7 @@ export function ExpensesManager({
                               <ExpenseDialog
                                 expense={expense}
                                 groups={groups}
+                                currency={currency}
                                 selectedMonth={selectedMonth}
                               />
                             )}
