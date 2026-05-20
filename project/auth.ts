@@ -14,13 +14,15 @@ export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
   providers: [Google({ allowDangerousEmailAccountLinking: true })],
   callbacks: {
     async signIn({ user, account, profile }) {
-      if (account?.provider === "google" && profile && user.id) {
+      if (account?.provider === "google" && profile && user.email) {
         const name = typeof profile.name === "string" ? profile.name : null;
         const image = typeof profile.picture === "string" ? profile.picture : null;
-        await prisma.user.update({
-          where: { id: user.id },
+
+        await prisma.user.updateMany({
+          where: { email: user.email },
           data: { name, image },
         });
+
         user.name = name;
         user.image = image;
       }

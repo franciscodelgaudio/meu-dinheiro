@@ -23,11 +23,20 @@ export default async function DashboardLayout({
 
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
-    select: { name: true, email: true, image: true },
+    select: {
+      name: true,
+      email: true,
+      image: true,
+      financeProfile: { select: { id: true } },
+    },
   });
 
   if (!user) {
     redirect("/login");
+  }
+
+  if (!user.financeProfile) {
+    redirect("/first-access");
   }
 
   return (
