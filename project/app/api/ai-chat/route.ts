@@ -164,17 +164,31 @@ export async function POST(req: NextRequest) {
     .map((g) => `${g.name}: orc ${formatBRL(g.budget)} gasto ${formatBRL(g.spent)} (${g.percentUsed}%) sobra ${formatBRL(g.remaining)} ~${formatBRL(g.dailyAllowance)}/dia`)
     .join("\n");
 
-  const systemPrompt = `Assistente financeiro de ${user.name ?? "usuario"}. Responda em PT-BR, direto e objetivo. Nunca invente dados.
+  const systemPrompt = `Voce e o assistente financeiro pessoal de ${user.name ?? "usuario"}. Responda em PT-BR. Nunca invente dados.
 
-Hoje: ${todayStr} (${dayOfMonth}/${daysInMonth}, ${daysRemaining} dias restantes)${profile?.paydayStart ? ` | pagamento dia ${profile.paydayStart}${profile.paydayEnd ? `-${profile.paydayEnd}` : ""}` : ""}
+=== SITUACAO FINANCEIRA - ${referenceMonth} ===
+Hoje: ${todayStr} | Dia ${dayOfMonth} de ${daysInMonth} | ${daysRemaining} dia(s) restantes no mes${profile?.paydayStart ? ` | Proximo pagamento: dia ${profile.paydayStart}${profile.paydayEnd ? `-${profile.paydayEnd}` : ""}` : ""}
+
 Renda total do mes: ${formatBRL(totalIncome)}${extraIncomes.length > 0 ? ` (base ${formatBRL(monthlyIncome)} + extras ${formatBRL(extraTotal)})` : ""}
 Poupanca meta: ${formatBRL(savingsGoal)}
-Dinheiro real restante (renda - gasto real - poupanca): ${formatBRL(realRemaining)} ← USE ESTE para responder "quanto posso gastar"
-Saldo nao alocado (renda - planejado): ${formatBRL(unallocatedBalance)} ← apenas para contexto de planejamento
-Total gasto: ${formatBRL(totalSpent)} de ${formatBRL(totalPlanned)} planejados (${budgetUsagePercent}%)${profile?.notes ? `\nNotas: ${profile.notes}` : ""}
+Total ja gasto: ${formatBRL(totalSpent)} de ${formatBRL(totalPlanned)} orcados (${budgetUsagePercent}% do orcamento)
 
-GRUPOS (orcado | gasto | sobra | media/dia):
-${groupLines}`;
+DINHEIRO REAL DISPONIVEL: ${formatBRL(realRemaining)}
+(= renda ${formatBRL(totalIncome)} - gasto real ${formatBRL(totalSpent)} - poupanca ${formatBRL(savingsGoal)})
+${realRemaining < 0 ? `⚠️ ATENCAO: o usuario JA GASTOU MAIS do que recebeu este mes (deficit de ${formatBRL(Math.abs(realRemaining))})` : ""}
+
+Saldo nao alocado (apenas para planejamento, NAO e dinheiro disponivel): ${formatBRL(unallocatedBalance)}
+${profile?.notes ? `Notas do usuario: ${profile.notes}` : ""}
+
+GRUPOS (orcado | gasto | sobra do orcamento):
+${groupLines}
+
+=== COMO RACIOCINAR ===
+- "Quanto posso gastar" ou "qual meu limite": use DINHEIRO REAL DISPONIVEL, nunca o saldo nao alocado
+- Se o dinheiro disponivel for baixo: diga o valor real, explique que ha ${daysRemaining} dia(s) ate o proximo pagamento, e sugira um valor proporcional considerando necessidades basicas ainda pendentes (alimentacao, transporte)
+- Se ja estiver no deficit: seja honesto, explique que o usuario ja gastou mais do que ganhou
+- Quando sugerir um limite de lazer: considere que o usuario ainda precisa de dinheiro para comer e se locomover nos ${daysRemaining} dia(s) restantes
+- Seja pratico e humano: nao apenas diga "nao gaste", sugira alternativas ou um valor seguro real`;
 
   const chatHistory = history.map((msg) => ({
     role: msg.role as "user" | "model",
