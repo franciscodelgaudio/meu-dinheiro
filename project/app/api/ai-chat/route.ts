@@ -8,6 +8,37 @@ interface ChatMessage {
   text: string;
 }
 
+// Server-side throttle: max 1 request per 7s per user (~8/min, under the 10 RPM free-tier limit)
+const THROTTLE_MS = 7000;
+const userLastRequest = new Map<string, number>();
+
+function checkThrottle(userId: string): number {
+  const last = userLastRequest.get(userId) ?? 0;
+  const elapsed = Date.now() - last;
+  if (elapsed < THROTTLE_MS) {
+    return Math.ceil((THROTTLE_MS - elapsed) / 1000);
+  }
+  userLastRequest.set(userId, Date.now());
+  return 0;
+}
+
+function extractRetryDelay(error: unknown): number | null {
+  if (!(error instanceof Error)) return null;
+  const details = (error as { errorDetails?: unknown[] }).errorDetails;
+  if (Array.isArray(details)) {
+    for (const detail of details) {
+      const d = detail as Record<string, unknown>;
+      if (typeof d?.retryDelay === "string") {
+        const match = d.retryDelay.match(/^(\d+)s$/);
+        if (match) return parseInt(match[1], 10);
+      }
+    }
+  }
+  const match = error.message.match(/retryDelay["\s:]+(\d+)s/i);
+  if (match) return parseInt(match[1], 10);
+  return null;
+}
+
 function getReferenceMonth() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -42,6 +73,11 @@ export async function POST(req: NextRequest) {
 
   if (!user) {
     return NextResponse.json({ error: "Usuario nao encontrado" }, { status: 404 });
+  }
+
+  const throttleWait = checkThrottle(user.id);
+  if (throttleWait > 0) {
+    return NextResponse.json({ error: "rate_limit", retryAfter: throttleWait }, { status: 429 });
   }
 
   const referenceMonth = getReferenceMonth();
@@ -87,45 +123,29 @@ export async function POST(req: NextRequest) {
     `${referenceMonth}-${String(daysInMonth).padStart(2, "0")}T23:59:59.999Z`,
   );
 
-  const expenses = await prisma.expense.findMany({
+  const spentPerGroup = await prisma.expense.groupBy({
+    by: ["expenseGroupId"],
     where: {
       userId: user.id,
       spentAt: { gte: startOfMonth, lte: endOfMonth },
     },
-    select: {
-      title: true,
-      amount: true,
-      spentAt: true,
-      behaviorType: true,
-      expenseGroup: { select: { id: true, name: true } },
-    },
-    orderBy: { spentAt: "desc" },
+    _sum: { amount: true },
   });
+
+  const spentMap = new Map(
+    spentPerGroup.map((r) => [r.expenseGroupId, Number(r._sum.amount ?? 0)]),
+  );
 
   const groups = rawGroups.map((group) => {
     const override = group.overrides[0];
     const name = override?.name ?? group.name;
     const budget = Number(override?.monthlyAmount ?? group.monthlyAmount);
-    const groupExpenses = expenses.filter((e) => e.expenseGroup.id === group.id);
-    const spent = groupExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+    const spent = spentMap.get(group.id) ?? 0;
     const remaining = budget - spent;
     const percentUsed = budget > 0 ? Math.round((spent / budget) * 100) : 0;
     const dailyAllowance = daysRemaining > 0 && remaining > 0 ? remaining / daysRemaining : 0;
 
-    return {
-      name,
-      budget,
-      spent,
-      remaining,
-      percentUsed,
-      dailyAllowance,
-      expenses: groupExpenses.slice(0, 8).map((e) => ({
-        title: e.title,
-        amount: Number(e.amount),
-        date: e.spentAt.toISOString().split("T")[0],
-      })),
-      expenseCount: groupExpenses.length,
-    };
+    return { name, budget, spent, remaining, percentUsed, dailyAllowance };
   });
 
   const monthlyIncome = Number(profile?.monthlyIncome ?? 0);
@@ -137,41 +157,19 @@ export async function POST(req: NextRequest) {
   const availableBalance = totalIncome - totalPlanned - savingsGoal;
   const budgetUsagePercent = totalPlanned > 0 ? Math.round((totalSpent / totalPlanned) * 100) : 0;
 
-  const systemPrompt = `Voce e o assistente financeiro pessoal de ${user.name ?? "usuario"}.
-Responda sempre em portugues brasileiro de forma objetiva, amigavel e direta.
-Use os dados abaixo para responder perguntas sobre financas. Nunca invente dados.
+  const groupLines = groups
+    .map((g) => `${g.name}: orc ${formatBRL(g.budget)} gasto ${formatBRL(g.spent)} (${g.percentUsed}%) sobra ${formatBRL(g.remaining)} ~${formatBRL(g.dailyAllowance)}/dia`)
+    .join("\n");
 
-=== DADOS FINANCEIROS - ${referenceMonth} ===
+  const systemPrompt = `Assistente financeiro de ${user.name ?? "usuario"}. Responda em PT-BR, direto e objetivo. Nunca invente dados.
 
-Hoje: ${todayStr} (dia ${dayOfMonth} de ${daysInMonth}, restam ${daysRemaining} dias no mes incluindo hoje)
+Hoje: ${todayStr} (${dayOfMonth}/${daysInMonth}, ${daysRemaining} dias restantes)${profile?.paydayStart ? ` | pagamento dia ${profile.paydayStart}${profile.paydayEnd ? `-${profile.paydayEnd}` : ""}` : ""}
+Renda: ${formatBRL(totalIncome)}${extraIncomes.length > 0 ? ` (base ${formatBRL(monthlyIncome)} + extras ${formatBRL(extraTotal)})` : ""}
+Poupanca meta: ${formatBRL(savingsGoal)} | Saldo livre: ${formatBRL(availableBalance)}
+Total gasto: ${formatBRL(totalSpent)} de ${formatBRL(totalPlanned)} planejados (${budgetUsagePercent}%)${profile?.notes ? `\nNotas: ${profile.notes}` : ""}
 
-RENDA:
-- Renda mensal: ${formatBRL(monthlyIncome)}${extraIncomes.length > 0 ? `\n- Rendas extras: ${extraIncomes.map((e) => `${e.name} ${formatBRL(Number(e.amount))}`).join(", ")}` : ""}
-- Total de renda: ${formatBRL(totalIncome)}
-
-POUPANCA META: ${formatBRL(savingsGoal)}
-SALDO DISPONIVEL (renda - planejado - poupanca): ${formatBRL(availableBalance)}${profile?.paydayStart ? `\nDIA DE PAGAMENTO: entre dia ${profile.paydayStart} e dia ${profile.paydayEnd ?? profile.paydayStart}` : ""}
-
-GRUPOS DE DESPESAS:
-${groups
-  .map(
-    (g) =>
-      `[${g.name}] orcamento ${formatBRL(g.budget)} | gasto ${formatBRL(g.spent)} (${g.percentUsed}%) | restante ${formatBRL(g.remaining)} | media diaria disponivel: ${formatBRL(g.dailyAllowance)}/dia${
-        g.expenses.length > 0
-          ? `\n  Ultimos gastos: ${g.expenses.map((e) => `${e.title} ${formatBRL(e.amount)} em ${e.date}`).join("; ")}${g.expenseCount > 8 ? ` e mais ${g.expenseCount - 8} gastos` : ""}`
-          : "\n  Sem gastos registrados"
-      }`,
-  )
-  .join("\n")}
-
-RESUMO: ${formatBRL(totalSpent)} gastos de ${formatBRL(totalPlanned)} planejados (${budgetUsagePercent}% do orcamento)
-${profile?.notes ? `\nNOTAS: ${profile.notes}` : ""}
-=== FIM DOS DADOS ===
-
-Dicas:
-- Para "quanto devo gastar hoje" com um grupo: use o campo "media diaria disponivel" do grupo
-- Se um grupo estiver acima de 80% do orcamento, mencione como alerta
-- Seja conciso. Use listas curtas quando listar varios itens`;
+GRUPOS (orcado | gasto | sobra | media/dia):
+${groupLines}`;
 
   const chatHistory = history.map((msg) => ({
     role: msg.role as "user" | "model",
@@ -211,6 +209,10 @@ Dicas:
               ),
             );
           }
+        } catch (streamError) {
+          console.error("[ai-chat] stream error:", streamError);
+          const msg = streamError instanceof Error ? streamError.message : String(streamError);
+          controller.enqueue(encoder.encode(`\n\n_Erro: ${msg}_`));
         } finally {
           controller.close();
         }
@@ -223,10 +225,34 @@ Dicas:
         "X-Content-Type-Options": "nosniff",
       },
     });
-  } catch {
-    return NextResponse.json(
-      { error: "Erro ao processar sua pergunta. Tente novamente." },
-      { status: 500 },
-    );
+  } catch (error) {
+    console.error("[ai-chat] error:", error);
+
+    const msg = error instanceof Error ? error.message : String(error);
+    const isRateLimit =
+      msg.includes("429") ||
+      msg.toLowerCase().includes("quota") ||
+      msg.toLowerCase().includes("rate");
+    const isSafety =
+      msg.toLowerCase().includes("safety") || msg.toLowerCase().includes("block");
+
+    if (isRateLimit) {
+      const isDaily = msg.toLowerCase().includes("per_day") || msg.toLowerCase().includes("daily");
+      if (isDaily) {
+        return NextResponse.json(
+          { error: "Limite diario da API do Gemini atingido. Tente novamente amanha." },
+          { status: 429 },
+        );
+      }
+      const suggested = extractRetryDelay(error) ?? 0;
+      const retryAfter = Math.max(suggested, 60);
+      return NextResponse.json({ error: "rate_limit", retryAfter }, { status: 429 });
+    }
+
+    const userMessage = isSafety
+      ? "Mensagem bloqueada por filtro de seguranca. Tente reformular."
+      : `Erro: ${msg}`;
+
+    return NextResponse.json({ error: userMessage }, { status: 500 });
   }
 }

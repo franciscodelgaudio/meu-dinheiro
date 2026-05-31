@@ -2,7 +2,7 @@
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import {
   analyzeQuickExpenseWithAI,
   type QuickExpenseBatchSuggestion,
@@ -366,6 +366,7 @@ export async function createExpense(
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");
+  revalidateTag("financial-insights");
 
   return { status: "success", message: "Gasto registrado." };
 }
@@ -439,6 +440,7 @@ export async function createQuickExpenses(
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");
+  revalidateTag("financial-insights");
 
   return {
     status: "success",
@@ -460,12 +462,12 @@ export async function analyzeQuickExpense(
   }
 
   const text = String(formData.get("quickText") ?? "").trim();
-  const image = formData.get("quickImage");
+  const images = formData.getAll("quickImage").filter((f): f is File => f instanceof File && f.size > 0);
   const selectedMonth = normalizeReferenceMonth(
     String(formData.get("selectedMonth") ?? ""),
   );
 
-  if (!text && !(image instanceof File && image.size > 0)) {
+  if (!text && images.length === 0) {
     return {
       status: "error",
       message: "Digite um gasto ou envie uma imagem para interpretar.",
@@ -499,7 +501,7 @@ export async function analyzeQuickExpense(
   try {
     const suggestion = await analyzeQuickExpenseWithAI({
       text,
-      image: image instanceof File ? image : undefined,
+      images,
       groups: groups.map((group) => ({
         id: group.id,
         name: group.overrides[0]?.name ?? group.name,
@@ -572,6 +574,7 @@ export async function createCreditCardExpense(
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
   revalidatePath("/dashboard/expenses");
+  revalidateTag("financial-insights");
 
   return {
     status: "success",
@@ -623,6 +626,7 @@ export async function updateExpense(
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");
+  revalidateTag("financial-insights");
 
   return { status: "success", message: "Gasto atualizado." };
 }
@@ -666,6 +670,7 @@ export async function deleteExpense(id: string): Promise<ExpenseActionState> {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
   revalidatePath("/dashboard/expenses");
+  revalidateTag("financial-insights");
 
   return { status: "success", message: "Gasto removido." };
 }

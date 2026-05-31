@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
+import { startTransition, useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarIcon,
@@ -267,6 +267,8 @@ function QuickExpenseCapture({
 }) {
   const router = useRouter();
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [state, analyzeAction, isAnalyzing] = useActionState(
     analyzeQuickExpense,
     initialQuickState,
@@ -284,6 +286,7 @@ function QuickExpenseCapture({
     }
 
     if (state.status === "success" && state.suggestion) {
+      setSelectedImages([]);
       window.setTimeout(() => {
         setPreviewOpen(true);
       }, 0);
@@ -324,7 +327,18 @@ function QuickExpenseCapture({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={analyzeAction} className="grid gap-3">
+          <form
+            className="grid gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              fd.delete("quickImage");
+              for (const file of selectedImages) {
+                fd.append("quickImage", file);
+              }
+              startTransition(() => analyzeAction(fd));
+            }}
+          >
             <input type="hidden" name="selectedMonth" value={selectedMonth} />
             <Textarea
               name="quickText"
@@ -332,27 +346,64 @@ function QuickExpenseCapture({
               placeholder="gastei 42 no bk hoje; mercado 280 reais pra semana; uber 23"
               className="min-h-20 resize-none"
             />
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium">
-                <ImagePlus className="size-4" />
-                Imagem
-                <Input
-                  name="quickImage"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  className="sr-only"
-                />
-              </Label>
-              <Button type="submit" disabled={isAnalyzing || groups.length === 0}>
-                {isAnalyzing ? (
-                  "Interpretando..."
-                ) : (
-                  <>
-                    <Send />
-                    Interpretar
-                  </>
-                )}
-              </Button>
+            <div className="flex flex-col gap-2">
+              {selectedImages.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedImages.map((file, idx) => (
+                    <span
+                      key={idx}
+                      className="flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
+                    >
+                      <span className="max-w-[120px] truncate">{file.name}</span>
+                      <button
+                        type="button"
+                        aria-label={`Remover ${file.name}`}
+                        className="ml-0.5 text-emerald-500 hover:text-emerald-800"
+                        onClick={() => {
+                          const next = selectedImages.filter((_, i) => i !== idx);
+                          setSelectedImages(next);
+                          if (next.length === 0 && imageInputRef.current) {
+                            imageInputRef.current.value = "";
+                          }
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <Label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-50">
+                  <ImagePlus className="size-4 shrink-0" />
+                  {selectedImages.length > 0 ? "Adicionar mais" : "Imagem"}
+                  <Input
+                    ref={imageInputRef}
+                    name="quickImage"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    multiple
+                    className="sr-only"
+                    onChange={(e) => {
+                      const newFiles = Array.from(e.target.files ?? []);
+                      if (newFiles.length > 0) {
+                        setSelectedImages((prev) => [...prev, ...newFiles]);
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </Label>
+                <Button type="submit" disabled={isAnalyzing || groups.length === 0}>
+                  {isAnalyzing ? (
+                    "Interpretando..."
+                  ) : (
+                    <>
+                      <Send />
+                      Interpretar
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </form>
         </CardContent>

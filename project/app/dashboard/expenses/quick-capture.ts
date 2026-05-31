@@ -27,7 +27,7 @@ export type QuickExpenseBatchSuggestion = {
 
 type AnalyzeQuickExpenseInput = {
   text: string;
-  image?: File;
+  images?: File[];
   groups: ExpenseGroupSuggestion[];
   today: string;
   selectedMonth: string;
@@ -230,7 +230,7 @@ async function fileToBase64(file: File) {
 
 export async function analyzeQuickExpenseWithAI({
   text,
-  image,
+  images,
   groups,
   today,
   selectedMonth,
@@ -265,13 +265,15 @@ export async function analyzeQuickExpenseWithAI({
     },
   ];
 
-  if (image && image.size > 0) {
+  for (const image of images ?? []) {
+    if (!image || image.size === 0) continue;
+
     if (!image.type.startsWith("image/")) {
-      throw new Error("Envie uma imagem valida.");
+      throw new Error("Envie apenas imagens validas.");
     }
 
     if (image.size > 8 * 1024 * 1024) {
-      throw new Error("A imagem precisa ter ate 8 MB.");
+      throw new Error(`A imagem "${image.name}" precisa ter ate 8 MB.`);
     }
 
     parts.push({

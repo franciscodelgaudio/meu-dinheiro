@@ -21,6 +21,7 @@ type InsightsData = {
   weekendAdvice: string;
   leisureBudget: number;
   recommendations: string[];
+  currency: string;
 };
 
 function getDaysUntilPayday(paydayStart: number | null, today: Date): number {
@@ -50,36 +51,33 @@ function getNextWeekendLabel(today: Date): string {
   }).format(saturday);
 }
 
-export async function FinancialInsights({ selectedMonth }: { selectedMonth: string }) {
-  const session = await auth();
-  if (!session?.user?.email) redirect("/login");
+// Defined OUTSIDE the component so the cache persists across renders.
+// Cache key = (userId, selectedMonth, todayStr) — stable within the same day.
+// Tag "financial-insights" allows invalidation when expenses change.
+const getCachedInsights = unstable_cache(
+  async (userId: string, selectedMonth: string, todayStr: string): Promise<InsightsData> => {
+    const today = new Date(todayStr + "T12:00:00Z");
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-  if (!user) redirect("/login");
+    const financeProfile = await prisma.userFinanceProfile.findUnique({
+      where: { userId },
+      select: { monthlyIncome: true, paydayStart: true, currency: true },
+    });
 
-  const financeProfile = await prisma.userFinanceProfile.findUnique({
-    where: { userId: user.id },
-    select: { monthlyIncome: true, paydayStart: true, currency: true },
-  });
+    const currency = financeProfile?.currency ?? "BRL";
+    const monthRange = getPaydayMonthRange(selectedMonth, financeProfile?.paydayStart ?? null);
 
-  const monthRange = getPaydayMonthRange(selectedMonth, financeProfile?.paydayStart ?? null);
-
-  const [extraIncomes, savingsAllocation, expenseGroups] =
-    await Promise.all([
+    const [extraIncomes, savingsAllocation, expenseGroups] = await Promise.all([
       prisma.extraIncome.findMany({
-        where: { userId: user.id, referenceMonth: selectedMonth },
+        where: { userId, referenceMonth: selectedMonth },
         select: { amount: true },
       }),
       prisma.savingsAllocation.findUnique({
-        where: { userId_referenceMonth: { userId: user.id, referenceMonth: selectedMonth } },
+        where: { userId_referenceMonth: { userId, referenceMonth: selectedMonth } },
         select: { amount: true },
       }),
       prisma.expenseGroup.findMany({
         where: {
-          userId: user.id,
+          userId,
           OR: [
             { referenceMonth: selectedMonth },
             { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
@@ -87,7 +85,7 @@ export async function FinancialInsights({ selectedMonth }: { selectedMonth: stri
         },
         include: {
           overrides: {
-            where: { userId: user.id, referenceMonth: selectedMonth },
+            where: { userId, referenceMonth: selectedMonth },
             take: 1,
           },
           expenses: {
@@ -98,43 +96,40 @@ export async function FinancialInsights({ selectedMonth }: { selectedMonth: stri
       }),
     ]);
 
-  const today = new Date();
-  const currency = financeProfile?.currency ?? "BRL";
-  const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency });
+    const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency });
+    const baseIncome = Number(financeProfile?.monthlyIncome ?? 0);
+    const extraIncome = extraIncomes.reduce((s, e) => s + Number(e.amount), 0);
+    const totalIncome = baseIncome + extraIncome;
+    const totalSavings = Number(savingsAllocation?.amount ?? 0);
+    const daysUntilPayday = getDaysUntilPayday(financeProfile?.paydayStart ?? null, today);
+    const nextWeekend = getNextWeekendLabel(today);
 
-  const baseIncome = Number(financeProfile?.monthlyIncome ?? 0);
-  const extraIncome = extraIncomes.reduce((s, e) => s + Number(e.amount), 0);
-  const totalIncome = baseIncome + extraIncome;
-  const totalSavings = Number(savingsAllocation?.amount ?? 0);
-  const daysUntilPayday = getDaysUntilPayday(financeProfile?.paydayStart ?? null, today);
-  const nextWeekend = getNextWeekendLabel(today);
+    const groups = expenseGroups
+      .filter((g) => {
+        const planned = Number(g.overrides[0]?.monthlyAmount ?? g.monthlyAmount);
+        const spent = g.expenses.reduce((s, e) => s + Number(e.amount), 0);
+        return planned > 0 || spent > 0;
+      })
+      .map((g) => ({
+        name: g.overrides[0]?.name ?? g.name,
+        planned: Number(g.overrides[0]?.monthlyAmount ?? g.monthlyAmount),
+        spent: g.expenses.reduce((s, e) => s + Number(e.amount), 0),
+      }));
 
-  const groups = expenseGroups
-    .filter((g) => {
-      const planned = Number(g.overrides[0]?.monthlyAmount ?? g.monthlyAmount);
-      const spent = g.expenses.reduce((s, e) => s + Number(e.amount), 0);
-      return planned > 0 || spent > 0;
-    })
-    .map((g) => ({
-      name: (g.overrides[0]?.name ?? g.name),
-      planned: Number(g.overrides[0]?.monthlyAmount ?? g.monthlyAmount),
-      spent: g.expenses.reduce((s, e) => s + Number(e.amount), 0),
-    }));
+    const totalPlanned = groups.reduce((s, g) => s + g.planned, 0);
+    const totalSpent = groups.reduce((s, g) => s + g.spent, 0);
+    const totalRemaining = totalIncome - totalSpent;
+    const sustainableDaily = daysUntilPayday > 0 ? totalRemaining / daysUntilPayday : 0;
+    const committedPct = totalIncome > 0 ? ((totalPlanned + totalSavings) / totalIncome) * 100 : 0;
 
-  const totalPlanned = groups.reduce((s, g) => s + g.planned, 0);
-  const totalSpent = groups.reduce((s, g) => s + g.spent, 0);
-  const totalRemaining = totalIncome - totalSpent;
-  const sustainableDaily = daysUntilPayday > 0 ? totalRemaining / daysUntilPayday : 0;
-  const committedPct = totalIncome > 0 ? ((totalPlanned + totalSavings) / totalIncome) * 100 : 0;
+    const groupsText = groups
+      .map((g) => {
+        const pct = g.planned > 0 ? ((g.spent / g.planned) * 100).toFixed(0) : "—";
+        return `- ${g.name}: planejado ${fmt.format(g.planned)}, gasto ${fmt.format(g.spent)} (${pct}% do planejado)`;
+      })
+      .join("\n");
 
-  const groupsText = groups
-    .map((g) => {
-      const pct = g.planned > 0 ? ((g.spent / g.planned) * 100).toFixed(0) : "—";
-      return `- ${g.name}: planejado ${fmt.format(g.planned)}, gasto ${fmt.format(g.spent)} (${pct}% do planejado)`;
-    })
-    .join("\n");
-
-  const prompt = `Você é um assistente financeiro pessoal direto e prático. Analise os dados financeiros e responda APENAS com JSON válido, sem markdown, sem texto extra.
+    const prompt = `Você é um assistente financeiro pessoal direto e prático. Analise os dados financeiros e responda APENAS com JSON válido, sem markdown, sem texto extra.
 
 Data atual: ${today.toLocaleDateString("pt-BR")}
 Próximo fim de semana: ${nextWeekend}
@@ -169,29 +164,41 @@ Responda SOMENTE com este JSON (sem markdown, sem \`\`\`):
   "recommendations": ["recomendacao 1", "recomendacao 2", "recomendacao 3"]
 }`;
 
-  let insights: InsightsData = {
-    riskLevel: "low",
-    riskAlert: null,
-    criticalGroups: [],
-    weekendAdvice: "Não foi possível gerar recomendação agora.",
-    leisureBudget: 0,
-    recommendations: ["Configure a variável GEMINI_API_KEY para ativar os insights de IA."],
-  };
+    try {
+      const result = await geminiModel.generateContent(prompt);
+      const raw = result.response.text().trim().replace(/^```json?\s*/i, "").replace(/\s*```$/i, "");
+      const parsed = JSON.parse(raw) as Omit<InsightsData, "currency">;
+      return { ...parsed, currency };
+    } catch (err) {
+      console.error("[FinancialInsights] Gemini error:", err);
+      return {
+        riskLevel: "low",
+        riskAlert: null,
+        criticalGroups: [],
+        weekendAdvice: "Não foi possível gerar recomendação agora.",
+        leisureBudget: 0,
+        recommendations: ["Configure a variável GEMINI_API_KEY para ativar os insights de IA."],
+        currency,
+      };
+    }
+  },
+  ["financial-insights"],
+  { revalidate: 86400, tags: ["financial-insights"] },
+);
 
-  try {
-    const cachedGenerate = unstable_cache(
-      async (p: string) => {
-        const result = await geminiModel.generateContent(p);
-        return result.response.text().trim().replace(/^```json?\s*/i, "").replace(/\s*```$/i, "");
-      },
-      ["gemini-insights", user.id, selectedMonth],
-      { revalidate: 86400 },
-    );
-    const raw = await cachedGenerate(prompt);
-    insights = JSON.parse(raw);
-  } catch (err) {
-    console.error("[FinancialInsights] Gemini error:", err);
-  }
+export async function FinancialInsights({ selectedMonth }: { selectedMonth: string }) {
+  const session = await auth();
+  if (!session?.user?.email) redirect("/login");
+
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true },
+  });
+  if (!user) redirect("/login");
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const insights = await getCachedInsights(user.id, selectedMonth, todayStr);
+  const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency: insights.currency });
 
   const riskBg: Record<string, string> = {
     low: "bg-emerald-50 border-emerald-200 text-emerald-900",
