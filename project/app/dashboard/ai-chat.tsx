@@ -112,15 +112,20 @@ export function AiChat() {
           const err = await res.json().catch(() => ({ error: "Erro desconhecido" }));
 
           if (res.status === 429) {
+            if (!err.retryAfter) {
+              // Daily limit or unknown — show exact Gemini message
+              throw new Error(err.error ?? "Limite da API atingido.");
+            }
             rateLimitHitsRef.current += 1;
             const base = Math.max(err.retryAfter ?? 0, BASE_RETRY_SECONDS);
             const wait = Math.min(base * rateLimitHitsRef.current, MAX_RETRY_SECONDS);
             startCountdown(wait);
+            const detail = err.geminiMsg ? `\n\nGemini: ${err.geminiMsg}` : "";
             setMessages((prev) => {
               const updated = [...prev];
               updated[updated.length - 1] = {
                 role: "model",
-                text: "",
+                text: detail,
                 streaming: false,
                 errorType: "rate_limit",
               };

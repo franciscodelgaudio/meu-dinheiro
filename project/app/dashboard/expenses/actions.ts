@@ -366,7 +366,7 @@ export async function createExpense(
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");
-  revalidateTag("financial-insights");
+  revalidateTag("financial-insights", "max");
 
   return { status: "success", message: "Gasto registrado." };
 }
@@ -440,7 +440,7 @@ export async function createQuickExpenses(
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");
-  revalidateTag("financial-insights");
+  revalidateTag("financial-insights", "max");
 
   return {
     status: "success",
@@ -574,7 +574,7 @@ export async function createCreditCardExpense(
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
   revalidatePath("/dashboard/expenses");
-  revalidateTag("financial-insights");
+  revalidateTag("financial-insights", "max");
 
   return {
     status: "success",
@@ -626,7 +626,7 @@ export async function updateExpense(
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");
-  revalidateTag("financial-insights");
+  revalidateTag("financial-insights", "max");
 
   return { status: "success", message: "Gasto atualizado." };
 }
@@ -670,7 +670,7 @@ export async function deleteExpense(id: string): Promise<ExpenseActionState> {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
   revalidatePath("/dashboard/expenses");
-  revalidateTag("financial-insights");
+  revalidateTag("financial-insights", "max");
 
   return { status: "success", message: "Gasto removido." };
 }

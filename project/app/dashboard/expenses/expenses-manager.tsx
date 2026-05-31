@@ -381,9 +381,9 @@ function QuickExpenseCapture({
                     ref={imageInputRef}
                     name="quickImage"
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    accept="image/*"
                     multiple
-                    className="sr-only"
+                    className="absolute opacity-0 w-px h-px overflow-hidden"
                     onChange={(e) => {
                       const newFiles = Array.from(e.target.files ?? []);
                       if (newFiles.length > 0) {

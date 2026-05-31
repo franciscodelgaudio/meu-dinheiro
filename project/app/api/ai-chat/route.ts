@@ -154,7 +154,10 @@ export async function POST(req: NextRequest) {
   const totalIncome = monthlyIncome + extraTotal;
   const totalPlanned = groups.reduce((sum, g) => sum + g.budget, 0);
   const totalSpent = groups.reduce((sum, g) => sum + g.spent, 0);
-  const availableBalance = totalIncome - totalPlanned - savingsGoal;
+  // Dinheiro real restante = renda - tudo que já foi gasto - poupança
+  const realRemaining = totalIncome - totalSpent - savingsGoal;
+  // Saldo não alocado = renda - total planejado (ignora gasto real, útil só para planejamento)
+  const unallocatedBalance = totalIncome - totalPlanned - savingsGoal;
   const budgetUsagePercent = totalPlanned > 0 ? Math.round((totalSpent / totalPlanned) * 100) : 0;
 
   const groupLines = groups
@@ -164,8 +167,10 @@ export async function POST(req: NextRequest) {
   const systemPrompt = `Assistente financeiro de ${user.name ?? "usuario"}. Responda em PT-BR, direto e objetivo. Nunca invente dados.
 
 Hoje: ${todayStr} (${dayOfMonth}/${daysInMonth}, ${daysRemaining} dias restantes)${profile?.paydayStart ? ` | pagamento dia ${profile.paydayStart}${profile.paydayEnd ? `-${profile.paydayEnd}` : ""}` : ""}
-Renda: ${formatBRL(totalIncome)}${extraIncomes.length > 0 ? ` (base ${formatBRL(monthlyIncome)} + extras ${formatBRL(extraTotal)})` : ""}
-Poupanca meta: ${formatBRL(savingsGoal)} | Saldo livre: ${formatBRL(availableBalance)}
+Renda total do mes: ${formatBRL(totalIncome)}${extraIncomes.length > 0 ? ` (base ${formatBRL(monthlyIncome)} + extras ${formatBRL(extraTotal)})` : ""}
+Poupanca meta: ${formatBRL(savingsGoal)}
+Dinheiro real restante (renda - gasto real - poupanca): ${formatBRL(realRemaining)} ← USE ESTE para responder "quanto posso gastar"
+Saldo nao alocado (renda - planejado): ${formatBRL(unallocatedBalance)} ← apenas para contexto de planejamento
 Total gasto: ${formatBRL(totalSpent)} de ${formatBRL(totalPlanned)} planejados (${budgetUsagePercent}%)${profile?.notes ? `\nNotas: ${profile.notes}` : ""}
 
 GRUPOS (orcado | gasto | sobra | media/dia):
@@ -179,7 +184,10 @@ ${groupLines}`;
   try {
     const chat = geminiModel.startChat({
       history: chatHistory,
-      systemInstruction: systemPrompt,
+      systemInstruction: {
+        role: "user",
+        parts: [{ text: systemPrompt }],
+      },
     });
 
     const result = await chat.sendMessageStream(message.trim());
@@ -226,32 +234,38 @@ ${groupLines}`;
       },
     });
   } catch (error) {
-    console.error("[ai-chat] error:", error);
-
     const msg = error instanceof Error ? error.message : String(error);
+    const details = (error as { errorDetails?: unknown[] }).errorDetails;
+    console.error("[ai-chat] error msg:", msg);
+    console.error("[ai-chat] error details:", JSON.stringify(details ?? null));
+
     const isRateLimit =
-      msg.includes("429") ||
-      msg.toLowerCase().includes("quota") ||
-      msg.toLowerCase().includes("rate");
+      msg.includes("[429") ||
+      msg.toLowerCase().includes("too many requests") ||
+      msg.toLowerCase().includes("quota exceeded") ||
+      msg.toLowerCase().includes("resource_exhausted");
     const isSafety =
       msg.toLowerCase().includes("safety") || msg.toLowerCase().includes("block");
 
     if (isRateLimit) {
-      const isDaily = msg.toLowerCase().includes("per_day") || msg.toLowerCase().includes("daily");
+      const isDaily =
+        msg.toLowerCase().includes("per_day") ||
+        msg.toLowerCase().includes("daily") ||
+        msg.toLowerCase().includes("requests_per_day");
       if (isDaily) {
         return NextResponse.json(
-          { error: "Limite diario da API do Gemini atingido. Tente novamente amanha." },
+          { error: "Limite diario da API do Gemini atingido. Tente novamente amanha (meia-noite UTC)." },
           { status: 429 },
         );
       }
       const suggested = extractRetryDelay(error) ?? 0;
       const retryAfter = Math.max(suggested, 60);
-      return NextResponse.json({ error: "rate_limit", retryAfter }, { status: 429 });
+      return NextResponse.json({ error: "rate_limit", retryAfter, geminiMsg: msg.slice(0, 300) }, { status: 429 });
     }
 
     const userMessage = isSafety
       ? "Mensagem bloqueada por filtro de seguranca. Tente reformular."
-      : `Erro: ${msg}`;
+      : `Erro Gemini: ${msg.slice(0, 200)}`;
 
     return NextResponse.json({ error: userMessage }, { status: 500 });
   }
