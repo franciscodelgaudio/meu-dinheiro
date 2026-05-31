@@ -292,7 +292,7 @@ function QuickExpenseCapture({
     }
 
     toast.error(state.message);
-  }, [groups, state]);
+  }, [state]);
 
   useEffect(() => {
     if (!saveState.status || !saveState.message) {

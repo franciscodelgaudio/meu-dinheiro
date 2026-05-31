@@ -301,6 +301,7 @@ export async function analyzeQuickExpenseWithAI({
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: quickExpenseSchema,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     }),
     },

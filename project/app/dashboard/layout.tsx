@@ -9,6 +9,7 @@ import {
 import { prisma } from "@/lib/prisma";
 
 import { AppSidebar } from "./app-sidebar";
+import { AiChat } from "./ai-chat";
 
 export default async function DashboardLayout({
   children,
@@ -52,6 +53,7 @@ export default async function DashboardLayout({
         </header>
         {children}
       </SidebarInset>
+      <AiChat />
     </SidebarProvider>
   );
 }
