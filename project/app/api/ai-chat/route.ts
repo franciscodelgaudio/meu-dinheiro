@@ -187,6 +187,8 @@ Dicas:
     const result = await chat.sendMessageStream(message.trim());
 
     const encoder = new TextEncoder();
+    const USAGE_MARKER = "\x00__USAGE__";
+
     const stream = new ReadableStream({
       async start(controller) {
         try {
@@ -195,6 +197,19 @@ Dicas:
             if (text) {
               controller.enqueue(encoder.encode(text));
             }
+          }
+          const response = await result.response;
+          const usage = response.usageMetadata;
+          if (usage) {
+            controller.enqueue(
+              encoder.encode(
+                `${USAGE_MARKER}${JSON.stringify({
+                  p: usage.promptTokenCount ?? 0,
+                  r: usage.candidatesTokenCount ?? 0,
+                  t: usage.totalTokenCount ?? 0,
+                })}`,
+              ),
+            );
           }
         } finally {
           controller.close();

@@ -11,10 +11,16 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 
+const USAGE_MARKER = "\x00__USAGE__";
+const GEMINI_CONTEXT_LIMIT = 1_048_576;
+
+type TokenUsage = { p: number; r: number; t: number };
+
 type Message = {
   role: "user" | "model";
   text: string;
   streaming?: boolean;
+  tokens?: TokenUsage;
 };
 
 const SUGGESTED_QUESTIONS = [
@@ -25,11 +31,30 @@ const SUGGESTED_QUESTIONS = [
   "Quanto tenho disponivel ainda?",
 ];
 
+function TokenIndicator({ used, limit }: { used: number; limit: number }) {
+  const remaining = limit - used;
+  const percent = Math.min((used / limit) * 100, 100);
+  const color =
+    percent >= 80 ? "bg-red-500" : percent >= 50 ? "bg-amber-500" : "bg-emerald-500";
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="h-1 w-20 overflow-hidden rounded-full bg-zinc-200">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${percent}%` }} />
+      </div>
+      <span className="text-[10px] text-zinc-400">
+        {remaining.toLocaleString("pt-BR")} tokens restantes
+      </span>
+    </div>
+  );
+}
+
 export function AiChat() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [totalTokensUsed, setTotalTokensUsed] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -72,20 +97,38 @@ export function AiChat() {
           const { done, value } = await reader.read();
           if (done) break;
           fullText += decoder.decode(value, { stream: true });
+          const markerIdx = fullText.indexOf(USAGE_MARKER);
+          const displayText = markerIdx !== -1 ? fullText.slice(0, markerIdx) : fullText;
           setMessages((prev) => {
             const updated = [...prev];
             updated[updated.length - 1] = {
               role: "model",
-              text: fullText,
+              text: displayText,
               streaming: true,
             };
             return updated;
           });
         }
 
+        const markerIdx = fullText.indexOf(USAGE_MARKER);
+        let displayText = fullText;
+        let tokens: TokenUsage | undefined;
+        if (markerIdx !== -1) {
+          displayText = fullText.slice(0, markerIdx);
+          try {
+            tokens = JSON.parse(fullText.slice(markerIdx + USAGE_MARKER.length)) as TokenUsage;
+          } catch {
+            // ignore parse errors
+          }
+        }
+
+        if (tokens) {
+          setTotalTokensUsed((prev) => prev + tokens.r);
+        }
+
         setMessages((prev) => {
           const updated = [...prev];
-          updated[updated.length - 1] = { role: "model", text: fullText, streaming: false };
+          updated[updated.length - 1] = { role: "model", text: displayText, streaming: false, tokens };
           return updated;
         });
       } catch (error) {
@@ -127,14 +170,19 @@ export function AiChat() {
           showCloseButton={false}
         >
           <SheetHeader className="flex-row items-center justify-between border-b px-4 py-3">
-            <SheetTitle className="flex items-center gap-2 text-sm font-semibold">
-              <Sparkles className="h-4 w-4 text-emerald-600" />
-              Assistente Financeiro
-            </SheetTitle>
+            <div className="flex flex-col gap-0.5">
+              <SheetTitle className="flex items-center gap-2 text-sm font-semibold">
+                <Sparkles className="h-4 w-4 text-emerald-600" />
+                Assistente Financeiro
+              </SheetTitle>
+              {totalTokensUsed > 0 && (
+                <TokenIndicator used={totalTokensUsed} limit={GEMINI_CONTEXT_LIMIT} />
+              )}
+            </div>
             <div className="flex items-center gap-2">
               {messages.length > 0 && (
                 <button
-                  onClick={() => setMessages([])}
+                  onClick={() => { setMessages([]); setTotalTokensUsed(0); }}
                   className="text-xs text-zinc-400 hover:text-zinc-600"
                   disabled={loading}
                 >
@@ -175,7 +223,7 @@ export function AiChat() {
                 {messages.map((msg, i) => (
                   <div
                     key={i}
-                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                    className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
                   >
                     <div
                       className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
@@ -192,6 +240,11 @@ export function AiChat() {
                         </span>
                       ))}
                     </div>
+                    {msg.role === "model" && msg.tokens && !msg.streaming && (
+                      <span className="mt-1 text-[10px] text-zinc-400">
+                        {msg.tokens.p.toLocaleString("pt-BR")} entrada · {msg.tokens.r.toLocaleString("pt-BR")} saída · {msg.tokens.t.toLocaleString("pt-BR")} total
+                      </span>
+                    )}
                   </div>
                 ))}
                 <div ref={messagesEndRef} />
