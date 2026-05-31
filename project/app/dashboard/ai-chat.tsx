@@ -338,7 +338,7 @@ export function AiChat() {
                           <span>{msg.text}</span>
                         </div>
                       ) : msg.text ? (
-                        msg.text
+                        <span>{renderText(msg.text)}</span>
                       ) : (
                         msg.streaming && (
                           <span className="flex items-center gap-2">
