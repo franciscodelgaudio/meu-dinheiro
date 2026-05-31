@@ -34,6 +34,24 @@ const SUGGESTED_QUESTIONS = [
   "Quanto tenho disponivel ainda?",
 ];
 
+function renderText(text: string) {
+  return text.split("\n").map((line, i) => {
+    const parts = line.split(/(\*\*[^*\n]+\*\*)/g);
+    return (
+      <span key={i}>
+        {i > 0 && <br />}
+        {parts.map((part, j) =>
+          part.startsWith("**") && part.endsWith("**") ? (
+            <strong key={j}>{part.slice(2, -2)}</strong>
+          ) : (
+            part
+          ),
+        )}
+      </span>
+    );
+  });
+}
+
 function TokenIndicator({ used, limit }: { used: number; limit: number }) {
   const remaining = limit - used;
   const percent = Math.min((used / limit) * 100, 100);
@@ -292,7 +310,7 @@ export function AiChat() {
                           : msg.errorType === "general"
                           ? "border border-red-200 bg-red-50 text-red-900"
                           : "bg-zinc-100 text-zinc-900"
-                      } ${!msg.errorType ? "whitespace-pre-wrap" : ""}`}
+                      }`}
                     >
                       {msg.errorType === "rate_limit" ? (
                         <div className="space-y-1.5">
