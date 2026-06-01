@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 
 import { ExpenseGroupsManager, type YearMonthSummary } from "./expense-groups-manager";
+import { getPaydayMonthRange } from "@/lib/date-utils";
 
 type ExpensesPageProps = {
   searchParams?: Promise<{
@@ -81,7 +82,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
   const financeProfile = await prisma.userFinanceProfile.findUnique({
     where: { userId: user.id },
-    select: { monthlyIncome: true, currency: true },
+    select: { monthlyIncome: true, currency: true, paydayStart: true },
   });
 
   const base = Number(financeProfile?.monthlyIncome ?? 0);
@@ -92,8 +93,17 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     const selectedYear = selectedMonth.split("-")[0];
     const firstMonth = `${selectedYear}-01`;
     const lastMonth = `${selectedYear}-12`;
+    const paydayStart = financeProfile?.paydayStart ?? null;
+    const now = new Date();
 
-    const [yearGroups, yearExtraIncomes, yearSavings] = await Promise.all([
+    const allYearMonths = Array.from({ length: 12 }, (_, i) =>
+      `${selectedYear}-${String(i + 1).padStart(2, "0")}`
+    );
+    const pastMonthRanges = allYearMonths
+      .map((m) => ({ month: m, range: getPaydayMonthRange(m, paydayStart) }))
+      .filter(({ range }) => range.end <= now);
+
+    const [yearGroups, yearExtraIncomes, yearSavings, yearActualExpenses] = await Promise.all([
       prisma.expenseGroup.findMany({
         where: {
           userId: user.id,
@@ -127,10 +137,30 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         },
         orderBy: { referenceMonth: "desc" },
       }),
+      pastMonthRanges.length > 0
+        ? prisma.expense.findMany({
+            where: {
+              userId: user.id,
+              spentAt: {
+                gte: pastMonthRanges.reduce(
+                  (min, { range }) => (range.start < min ? range.start : min),
+                  pastMonthRanges[0].range.start,
+                ),
+                lt: pastMonthRanges.reduce(
+                  (max, { range }) => (range.end > max ? range.end : max),
+                  pastMonthRanges[0].range.end,
+                ),
+              },
+            },
+            select: { expenseGroupId: true, spentAt: true, amount: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     yearData = Array.from({ length: 12 }, (_, i) => {
       const month = `${selectedYear}-${String(i + 1).padStart(2, "0")}`;
+      const monthRange = getPaydayMonthRange(month, paydayStart);
+      const isMonthClosed = monthRange.end <= now;
 
       const activeGroups = yearGroups.filter(
         (g) =>
@@ -140,10 +170,17 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             isGroupActiveInMonth(g.repeatMonths, month)),
       );
 
-      const totalExpenses = activeGroups.reduce((sum, g) => {
-        const override = g.overrides.find((o) => o.referenceMonth === month);
-        return sum + Number(override?.monthlyAmount ?? g.monthlyAmount);
-      }, 0);
+      let totalExpenses: number;
+      if (isMonthClosed) {
+        totalExpenses = yearActualExpenses
+          .filter((e) => e.spentAt >= monthRange.start && e.spentAt < monthRange.end)
+          .reduce((sum, e) => sum + Number(e.amount), 0);
+      } else {
+        totalExpenses = activeGroups.reduce((sum, g) => {
+          const override = g.overrides.find((o) => o.referenceMonth === month);
+          return sum + Number(override?.monthlyAmount ?? g.monthlyAmount);
+        }, 0);
+      }
 
       if (totalExpenses === 0) return null;
 
@@ -171,36 +208,56 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     }).filter((row): row is YearMonthSummary => row !== null);
   }
 
-  const expenseGroups = await prisma.expenseGroup.findMany({
-    where: {
-      userId: user.id,
-      OR: [
-        { referenceMonth: selectedMonth },
-        { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
-      ],
-    },
-    include: {
-      overrides: {
-        where: { userId: user.id, referenceMonth: selectedMonth },
-        take: 1,
+  const selectedMonthRange = getPaydayMonthRange(selectedMonth, financeProfile?.paydayStart ?? null);
+  const isSelectedMonthClosed = selectedMonthRange.end <= new Date();
+
+  const [expenseGroups, extraIncomes, savingsEntries, monthActualExpenses] = await Promise.all([
+    prisma.expenseGroup.findMany({
+      where: {
+        userId: user.id,
+        OR: [
+          { referenceMonth: selectedMonth },
+          { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
+        ],
       },
-    },
-    orderBy: [{ referenceMonth: "desc" }, { createdAt: "desc" }],
-  });
-  const extraIncomes = await prisma.extraIncome.findMany({
-    where: { userId: user.id, referenceMonth: selectedMonth },
-    orderBy: { createdAt: "desc" },
-  });
-  const savingsEntries = await prisma.savingsAllocation.findMany({
-    where: {
-      userId: user.id,
-      OR: [
-        { referenceMonth: selectedMonth },
-        { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
-      ],
-    },
-    orderBy: { referenceMonth: "desc" },
-  });
+      include: {
+        overrides: {
+          where: { userId: user.id, referenceMonth: selectedMonth },
+          take: 1,
+        },
+      },
+      orderBy: [{ referenceMonth: "desc" }, { createdAt: "desc" }],
+    }),
+    prisma.extraIncome.findMany({
+      where: { userId: user.id, referenceMonth: selectedMonth },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.savingsAllocation.findMany({
+      where: {
+        userId: user.id,
+        OR: [
+          { referenceMonth: selectedMonth },
+          { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
+        ],
+      },
+      orderBy: { referenceMonth: "desc" },
+    }),
+    isSelectedMonthClosed
+      ? prisma.expense.groupBy({
+          by: ["expenseGroupId"],
+          where: {
+            userId: user.id,
+            spentAt: { gte: selectedMonthRange.start, lt: selectedMonthRange.end },
+          },
+          _sum: { amount: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const actualByGroup = new Map(
+    monthActualExpenses.map((e) => [e.expenseGroupId, Number(e._sum?.amount ?? 0)])
+  );
+
   const savingsAllocation = findActiveSavings(savingsEntries, selectedMonth);
   const activeExpenseGroups = expenseGroups.filter(
     (g) =>
@@ -211,11 +268,15 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const groups = activeExpenseGroups.map((group) => {
     const override = group.overrides[0];
 
+    const monthlyAmount = isSelectedMonthClosed
+      ? (actualByGroup.get(group.id) ?? 0).toString()
+      : (override?.monthlyAmount ?? group.monthlyAmount).toString();
+
     return {
       id: group.id,
       referenceMonth: group.referenceMonth,
       name: override?.name ?? group.name,
-      monthlyAmount: (override?.monthlyAmount ?? group.monthlyAmount).toString(),
+      monthlyAmount,
       affectsFutureMonths: group.affectsFutureMonths,
       repeatMonths: group.repeatMonths,
       color: override?.color ?? group.color,

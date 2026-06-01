@@ -18,21 +18,21 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { FinancialInsights, FinancialInsightsSkeleton } from "./financial-insights";
-import { getPaydayMonthRange } from "@/lib/date-utils";
+import { getPaydayMonthRange, getCalendarMonth, getEffectiveCurrentMonth } from "@/lib/date-utils";
+import { IncomeReceiptBanner } from "./income-receipt-banner";
 
 type DashboardPageProps = {
   searchParams?: Promise<{ month?: string | string[] }>;
 };
 
-function getCurrentReferenceMonth() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function normalizeReferenceMonth(value: string | string[] | undefined) {
+function normalizeReferenceMonth(
+  value: string | string[] | undefined,
+  paydayStart: number | null,
+  incomeConfirmed: boolean,
+) {
   const month = Array.isArray(value) ? value[0] : value;
   if (month && /^\d{4}-\d{2}$/.test(month)) return month;
-  return getCurrentReferenceMonth();
+  return getEffectiveCurrentMonth(paydayStart, incomeConfirmed);
 }
 
 function formatReferenceMonth(referenceMonth: string) {
@@ -97,7 +97,6 @@ const quickLinks = [
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const params = await searchParams;
-  const selectedMonth = normalizeReferenceMonth(params?.month);
   const session = await auth();
 
   if (!session?.user?.email) redirect("/login");
@@ -109,9 +108,30 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   if (!user) redirect("/login");
 
-  const financeProfile = await prisma.userFinanceProfile.findUnique({
-    where: { userId: user.id },
-  });
+  const [financeProfile, incomeReceiptForCalendarMonth] = await Promise.all([
+    prisma.userFinanceProfile.findUnique({ where: { userId: user.id } }),
+    prisma.incomeReceipt.findUnique({
+      where: {
+        userId_referenceMonth: { userId: user.id, referenceMonth: getCalendarMonth() },
+      },
+    }),
+  ]);
+
+  const incomeConfirmed = incomeReceiptForCalendarMonth !== null;
+  const calendarMonth = getCalendarMonth();
+  const selectedMonth = normalizeReferenceMonth(
+    params?.month,
+    financeProfile?.paydayStart ?? null,
+    incomeConfirmed,
+  );
+
+  // Show banner when payday has arrived but income hasn't been confirmed yet
+  const today = new Date();
+  const paydayStart = financeProfile?.paydayStart ?? null;
+  const showReceiptBanner =
+    paydayStart !== null &&
+    today.getDate() >= paydayStart &&
+    !incomeConfirmed;
   const expenseGroups = await prisma.expenseGroup.findMany({
     where: {
       userId: user.id,
@@ -204,6 +224,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </Link>
         </div>
       </header>
+
+      {/* Income receipt banner */}
+      {showReceiptBanner && (
+        <IncomeReceiptBanner
+          calendarMonth={calendarMonth}
+          formattedMonth={formatReferenceMonth(calendarMonth)}
+        />
+      )}
 
       {/* 4 metric cards */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">

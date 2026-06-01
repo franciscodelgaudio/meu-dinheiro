@@ -22,6 +22,7 @@ model User {
   creditCardPurchases   CreditCardPurchase[]
   extraIncomes          ExtraIncome[]
   savingsAllocations    SavingsAllocation[]
+  incomeReceipts        IncomeReceipt[]
   accounts              Account[]
   sessions              Session[]
   authenticators        Authenticator[]
@@ -160,6 +161,20 @@ model SavingsAllocation {
   description         String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, referenceMonth])
+  @@index([userId, referenceMonth])
+}
+
+model IncomeReceipt {
+  id             String   @id @default(cuid())
+  userId         String
+  referenceMonth String
+  receivedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
