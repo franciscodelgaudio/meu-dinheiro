@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 
 import { ExpenseGroupsManager, type YearMonthSummary } from "./expense-groups-manager";
-import { getPaydayMonthRange } from "@/lib/date-utils";
+import { getPaydayMonthRange, getCalendarMonth, getEffectiveCurrentMonth } from "@/lib/date-utils";
 
 type ExpensesPageProps = {
   searchParams?: Promise<{
@@ -40,20 +40,14 @@ function findActiveSavings<
   );
 }
 
-function getCurrentReferenceMonth() {
-  const now = new Date();
-
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function normalizeReferenceMonth(value: string | string[] | undefined) {
+function normalizeReferenceMonth(
+  value: string | string[] | undefined,
+  paydayStart: number | null,
+  incomeConfirmed: boolean,
+) {
   const month = Array.isArray(value) ? value[0] : value;
-
-  if (month && /^\d{4}-\d{2}$/.test(month)) {
-    return month;
-  }
-
-  return getCurrentReferenceMonth();
+  if (month && /^\d{4}-\d{2}$/.test(month)) return month;
+  return getEffectiveCurrentMonth(paydayStart, incomeConfirmed);
 }
 
 function normalizeView(value: string | string[] | undefined): "month" | "year" {
@@ -63,7 +57,6 @@ function normalizeView(value: string | string[] | undefined): "month" | "year" {
 
 export default async function ExpensesPage({ searchParams }: ExpensesPageProps) {
   const params = await searchParams;
-  const selectedMonth = normalizeReferenceMonth(params?.month);
   const view = normalizeView(params?.view);
   const session = await auth();
 
@@ -80,10 +73,21 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     redirect("/login");
   }
 
-  const financeProfile = await prisma.userFinanceProfile.findUnique({
-    where: { userId: user.id },
-    select: { monthlyIncome: true, currency: true, paydayStart: true },
-  });
+  const [financeProfile, incomeReceipt] = await Promise.all([
+    prisma.userFinanceProfile.findUnique({
+      where: { userId: user.id },
+      select: { monthlyIncome: true, currency: true, paydayStart: true },
+    }),
+    prisma.incomeReceipt.findUnique({
+      where: { userId_referenceMonth: { userId: user.id, referenceMonth: getCalendarMonth() } },
+    }),
+  ]);
+
+  const selectedMonth = normalizeReferenceMonth(
+    params?.month,
+    financeProfile?.paydayStart ?? null,
+    incomeReceipt !== null,
+  );
 
   const base = Number(financeProfile?.monthlyIncome ?? 0);
 
