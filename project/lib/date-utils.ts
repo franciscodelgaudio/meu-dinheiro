@@ -1,3 +1,21 @@
+export function getNextCalendarMonth(month: string): string {
+  const [year, m] = month.split("-").map(Number);
+  const d = new Date(Date.UTC(year, m, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * When paydayStart is set, the financial month cycle extends into the first days
+ * of the next calendar month (before payday arrives). Debts that start in that
+ * next calendar month should still be considered part of the current cycle.
+ *
+ * Returns the upper bound (inclusive) for firstInstallmentMonth queries.
+ */
+export function getDebtQueryUpperBound(selectedMonth: string, paydayStart: number | null): string {
+  if (!paydayStart) return selectedMonth;
+  return getNextCalendarMonth(selectedMonth);
+}
+
 /**
  * Returns the calendar month (YYYY-MM) in which the current date falls,
  * ignoring any payday adjustments. Used to identify which month's income

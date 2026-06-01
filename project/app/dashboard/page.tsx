@@ -18,7 +18,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { FinancialInsights, FinancialInsightsSkeleton } from "./financial-insights";
-import { getPaydayMonthRange, getCalendarMonth, getEffectiveCurrentMonth } from "@/lib/date-utils";
+import { getPaydayMonthRange, getCalendarMonth, getEffectiveCurrentMonth, getDebtQueryUpperBound } from "@/lib/date-utils";
 import { IncomeReceiptBanner } from "./income-receipt-banner";
 
 type DashboardPageProps = {
@@ -154,7 +154,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     where: { userId_referenceMonth: { userId: user.id, referenceMonth: selectedMonth } },
   });
   const debtCommitments = await prisma.creditCardPurchase.findMany({
-    where: { userId: user.id, kind: "debt", firstInstallmentMonth: { lte: selectedMonth } },
+    where: {
+      userId: user.id,
+      kind: "debt",
+      firstInstallmentMonth: { lte: getDebtQueryUpperBound(selectedMonth, financeProfile?.paydayStart ?? null) },
+    },
   });
 
   const { start: monthStart, end: monthEnd } = getPaydayMonthRange(
@@ -179,7 +183,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   );
   const totalSavings = Number(savingsAllocation?.amount ?? 0);
   const totalDebts = debtCommitments.reduce((total, debt) => {
-    const idx = getMonthDistance(debt.firstInstallmentMonth, selectedMonth);
+    const rawIdx = getMonthDistance(debt.firstInstallmentMonth, selectedMonth);
+    // A debt starting in the next calendar month still belongs to this financial cycle
+    const idx = rawIdx === -1 && paydayStart ? 0 : rawIdx;
     if (idx < 0 || idx >= debt.installmentCount) return total;
     const amounts = getInstallmentAmounts(Number(debt.totalAmount), debt.installmentCount);
     return total + (amounts[idx] ?? 0);

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 
 import { DebtsManager } from "./debts-manager";
-import { getCalendarMonth, getEffectiveCurrentMonth } from "@/lib/date-utils";
+import { getCalendarMonth, getEffectiveCurrentMonth, getDebtQueryUpperBound } from "@/lib/date-utils";
 
 type DebtsPageProps = {
   searchParams?: Promise<{
@@ -73,12 +73,13 @@ export default async function DebtsPage({ searchParams }: DebtsPageProps) {
     incomeReceipt !== null,
   );
 
+  const paydayStart = financeProfile?.paydayStart ?? null;
   const [commitments, paidExpenses] = await Promise.all([
     prisma.creditCardPurchase.findMany({
       where: {
         userId: user.id,
         kind: { in: ["debt", "credit_card"] },
-        firstInstallmentMonth: { lte: selectedMonth },
+        firstInstallmentMonth: { lte: getDebtQueryUpperBound(selectedMonth, paydayStart) },
       },
       orderBy: [{ kind: "asc" }, { firstInstallmentMonth: "asc" }, { createdAt: "desc" }],
     }),
@@ -103,10 +104,9 @@ export default async function DebtsPage({ searchParams }: DebtsPageProps) {
 
   const debtItems = commitments
     .map((commitment) => {
-      const selectedInstallmentIndex = getMonthDistance(
-        commitment.firstInstallmentMonth,
-        selectedMonth,
-      );
+      const rawIndex = getMonthDistance(commitment.firstInstallmentMonth, selectedMonth);
+      // A commitment starting in the next calendar month still belongs to this financial cycle
+      const selectedInstallmentIndex = rawIndex === -1 && paydayStart ? 0 : rawIndex;
 
       if (
         selectedInstallmentIndex < 0 ||
