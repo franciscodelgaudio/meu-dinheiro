@@ -888,6 +888,7 @@ function CreditCardExpenseDialog({ selectedMonth }: { selectedMonth: string }) {
 function DeleteExpenseButton({ expense }: { expense: ExpenseView }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
 
   function handleDelete() {
     startTransition(async () => {
@@ -896,6 +897,7 @@ function DeleteExpenseButton({ expense }: { expense: ExpenseView }) {
       if (result.status === "success") {
         toast.success(result.message);
         router.refresh();
+        setOpen(false);
         return;
       }
 
@@ -904,15 +906,34 @@ function DeleteExpenseButton({ expense }: { expense: ExpenseView }) {
   }
 
   return (
-    <Button
-      variant="destructive"
-      size="icon-sm"
-      aria-label="Excluir gasto"
-      onClick={handleDelete}
-      disabled={isPending}
-    >
-      <Trash2 />
-    </Button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="destructive" size="icon-sm" aria-label="Excluir gasto">
+          <Trash2 />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Excluir gasto?</DialogTitle>
+          <DialogDescription>Esta acao nao pode ser desfeita.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline">
+              Cancelar
+            </Button>
+          </DialogClose>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={isPending}
+          >
+            {isPending ? "Excluindo..." : "Excluir"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

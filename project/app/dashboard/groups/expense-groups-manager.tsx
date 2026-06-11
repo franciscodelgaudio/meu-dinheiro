@@ -1064,6 +1064,7 @@ function SavingsAllocationDialog({
 function DeleteExpenseGroupButton({ group }: { group: ExpenseGroupView }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
 
   function handleDelete() {
     startTransition(async () => {
@@ -1072,6 +1073,7 @@ function DeleteExpenseGroupButton({ group }: { group: ExpenseGroupView }) {
       if (result.status === "success") {
         toast.success(result.message);
         router.refresh();
+        setOpen(false);
         return;
       }
 
@@ -1080,21 +1082,41 @@ function DeleteExpenseGroupButton({ group }: { group: ExpenseGroupView }) {
   }
 
   return (
-    <Button
-      variant="destructive"
-      size="icon-sm"
-      aria-label="Excluir grupo"
-      onClick={handleDelete}
-      disabled={isPending}
-    >
-      <Trash2 />
-    </Button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="destructive" size="icon-sm" aria-label="Excluir grupo">
+          <Trash2 />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Excluir grupo?</DialogTitle>
+          <DialogDescription>Esta acao nao pode ser desfeita.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline">
+              Cancelar
+            </Button>
+          </DialogClose>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={isPending}
+          >
+            {isPending ? "Excluindo..." : "Excluir"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function DeleteExtraIncomeButton({ income }: { income: ExtraIncomeView }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
 
   function handleDelete() {
     startTransition(async () => {
@@ -1103,6 +1125,7 @@ function DeleteExtraIncomeButton({ income }: { income: ExtraIncomeView }) {
       if (result.status === "success") {
         toast.success(result.message);
         router.refresh();
+        setOpen(false);
         return;
       }
 
@@ -1111,15 +1134,34 @@ function DeleteExtraIncomeButton({ income }: { income: ExtraIncomeView }) {
   }
 
   return (
-    <Button
-      variant="destructive"
-      size="icon-sm"
-      aria-label="Excluir renda extra"
-      onClick={handleDelete}
-      disabled={isPending}
-    >
-      <Trash2 />
-    </Button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="destructive" size="icon-sm" aria-label="Excluir renda extra">
+          <Trash2 />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Excluir renda extra?</DialogTitle>
+          <DialogDescription>Esta acao nao pode ser desfeita.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline">
+              Cancelar
+            </Button>
+          </DialogClose>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={isPending}
+          >
+            {isPending ? "Excluindo..." : "Excluir"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1130,6 +1172,7 @@ function DeleteSavingsAllocationButton({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
 
   function handleDelete() {
     startTransition(async () => {
@@ -1138,6 +1181,7 @@ function DeleteSavingsAllocationButton({
       if (result.status === "success") {
         toast.success(result.message);
         router.refresh();
+        setOpen(false);
         return;
       }
 
@@ -1146,15 +1190,34 @@ function DeleteSavingsAllocationButton({
   }
 
   return (
-    <Button
-      variant="outline"
-      size="icon-sm"
-      aria-label="Remover poupanca"
-      onClick={handleDelete}
-      disabled={isPending}
-    >
-      <Trash2 />
-    </Button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="icon-sm" aria-label="Remover poupanca">
+          <Trash2 />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Remover poupanca?</DialogTitle>
+          <DialogDescription>Esta acao nao pode ser desfeita.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline">
+              Cancelar
+            </Button>
+          </DialogClose>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={isPending}
+          >
+            {isPending ? "Removendo..." : "Remover"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

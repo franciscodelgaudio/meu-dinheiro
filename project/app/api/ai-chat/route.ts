@@ -87,36 +87,22 @@ export async function POST(req: NextRequest) {
   const dayOfMonth = now.getDate();
   const daysRemaining = daysInMonth - dayOfMonth + 1;
 
-  const [profile, rawGroups, extraIncomes, savings] = await Promise.all([
-    prisma.userFinanceProfile.findUnique({
-      where: { userId: user.id },
-      select: { monthlyIncome: true, paydayStart: true, paydayEnd: true, notes: true },
-    }),
-    prisma.expenseGroup.findMany({
-      where: {
-        userId: user.id,
-        OR: [
-          { referenceMonth },
-          { affectsFutureMonths: true, referenceMonth: { lt: referenceMonth } },
-        ],
+  const rawGroups = await prisma.expenseGroup.findMany({
+    where: {
+      userId: user.id,
+      OR: [
+        { referenceMonth },
+        { affectsFutureMonths: true, referenceMonth: { lt: referenceMonth } },
+      ],
+    },
+    include: {
+      overrides: {
+        where: { userId: user.id, referenceMonth },
+        take: 1,
       },
-      include: {
-        overrides: {
-          where: { userId: user.id, referenceMonth },
-          take: 1,
-        },
-      },
-      orderBy: [{ createdAt: "asc" }],
-    }),
-    prisma.extraIncome.findMany({
-      where: { userId: user.id, referenceMonth },
-      select: { name: true, amount: true },
-    }),
-    prisma.savingsAllocation.findUnique({
-      where: { userId_referenceMonth: { userId: user.id, referenceMonth } },
-      select: { amount: true },
-    }),
-  ]);
+    },
+    orderBy: [{ createdAt: "asc" }],
+  });
 
   const startOfMonth = new Date(`${referenceMonth}-01T00:00:00.000Z`);
   const endOfMonth = new Date(
@@ -148,16 +134,9 @@ export async function POST(req: NextRequest) {
     return { name, budget, spent, remaining, percentUsed, dailyAllowance };
   });
 
-  const monthlyIncome = Number(profile?.monthlyIncome ?? 0);
-  const extraTotal = extraIncomes.reduce((sum, e) => sum + Number(e.amount), 0);
-  const savingsGoal = Number(savings?.amount ?? 0);
-  const totalIncome = monthlyIncome + extraTotal;
   const totalPlanned = groups.reduce((sum, g) => sum + g.budget, 0);
   const totalSpent = groups.reduce((sum, g) => sum + g.spent, 0);
-  // Dinheiro real restante = renda - tudo que já foi gasto - poupança
-  const realRemaining = totalIncome - totalSpent - savingsGoal;
-  // Saldo não alocado = renda - total planejado (ignora gasto real, útil só para planejamento)
-  const unallocatedBalance = totalIncome - totalPlanned - savingsGoal;
+  const totalRemaining = totalPlanned - totalSpent;
   const budgetUsagePercent = totalPlanned > 0 ? Math.round((totalSpent / totalPlanned) * 100) : 0;
 
   const groupLines = groups
@@ -166,29 +145,22 @@ export async function POST(req: NextRequest) {
 
   const systemPrompt = `Voce e o assistente financeiro pessoal de ${user.name ?? "usuario"}. Responda em PT-BR. Nunca invente dados.
 
-=== SITUACAO FINANCEIRA - ${referenceMonth} ===
-Hoje: ${todayStr} | Dia ${dayOfMonth} de ${daysInMonth} | ${daysRemaining} dia(s) restantes no mes${profile?.paydayStart ? ` | Proximo pagamento: dia ${profile.paydayStart}${profile.paydayEnd ? `-${profile.paydayEnd}` : ""}` : ""}
+=== GASTOS - ${referenceMonth} ===
+Hoje: ${todayStr} | Dia ${dayOfMonth} de ${daysInMonth} | ${daysRemaining} dia(s) restantes no mes
 
-Renda total do mes: ${formatBRL(totalIncome)}${extraIncomes.length > 0 ? ` (base ${formatBRL(monthlyIncome)} + extras ${formatBRL(extraTotal)})` : ""}
-Poupanca meta: ${formatBRL(savingsGoal)}
-Total ja gasto: ${formatBRL(totalSpent)} de ${formatBRL(totalPlanned)} orcados (${budgetUsagePercent}% do orcamento)
+Total orcado: ${formatBRL(totalPlanned)}
+Total ja gasto: ${formatBRL(totalSpent)} (${budgetUsagePercent}% do orcamento)
+Sobra do orcamento: ${formatBRL(totalRemaining)}
+${totalRemaining < 0 ? `⚠️ ATENCAO: o usuario JA ULTRAPASSOU o orcamento total (estouro de ${formatBRL(Math.abs(totalRemaining))})` : ""}
 
-DINHEIRO REAL DISPONIVEL: ${formatBRL(realRemaining)}
-(= renda ${formatBRL(totalIncome)} - gasto real ${formatBRL(totalSpent)} - poupanca ${formatBRL(savingsGoal)})
-${realRemaining < 0 ? `⚠️ ATENCAO: o usuario JA GASTOU MAIS do que recebeu este mes (deficit de ${formatBRL(Math.abs(realRemaining))})` : ""}
-
-Saldo nao alocado (apenas para planejamento, NAO e dinheiro disponivel): ${formatBRL(unallocatedBalance)}
-${profile?.notes ? `Notas do usuario: ${profile.notes}` : ""}
-
-GRUPOS (orcado | gasto | sobra do orcamento):
+GRUPOS (orcado | gasto | sobra | %):
 ${groupLines}
 
 === COMO RACIOCINAR ===
-- "Quanto posso gastar" ou "qual meu limite": use DINHEIRO REAL DISPONIVEL, nunca o saldo nao alocado
-- Se o dinheiro disponivel for baixo: diga o valor real, explique que ha ${daysRemaining} dia(s) ate o proximo pagamento, e sugira um valor proporcional considerando necessidades basicas ainda pendentes (alimentacao, transporte)
-- Se ja estiver no deficit: seja honesto, explique que o usuario ja gastou mais do que ganhou
-- Quando sugerir um limite de lazer: considere que o usuario ainda precisa de dinheiro para comer e se locomover nos ${daysRemaining} dia(s) restantes
-- Seja pratico e humano: nao apenas diga "nao gaste", sugira alternativas ou um valor seguro real`;
+- Base as respostas apenas nos dados de gastos e orcamentos por grupo acima
+- Ao falar sobre "sobra", refira-se sempre a sobra do orcamento (orcado - gasto), nao a renda
+- Se um grupo estourou o orcamento, destaque isso claramente
+- Seja pratico e humano: aponte padrao de gastos, grupos criticos e sugestoes concretas`;
 
   const chatHistory = history.map((msg) => ({
     role: msg.role as "user" | "model",

@@ -24,20 +24,6 @@ type InsightsData = {
   currency: string;
 };
 
-function getDaysUntilPayday(paydayStart: number | null, today: Date): number {
-  const y = today.getUTCFullYear();
-  const m = today.getUTCMonth();
-  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-  const payday = paydayStart ?? lastDay;
-
-  let next = new Date(Date.UTC(y, m, Math.min(payday, lastDay)));
-  if (next <= today) {
-    const lastDayNext = new Date(Date.UTC(y, m + 2, 0)).getUTCDate();
-    next = new Date(Date.UTC(y, m + 1, Math.min(payday, lastDayNext)));
-  }
-
-  return Math.max(1, Math.ceil((next.getTime() - today.getTime()) / 86400000));
-}
 
 function getNextWeekendLabel(today: Date): string {
   const dow = today.getUTCDay();
@@ -60,48 +46,33 @@ const getCachedInsights = unstable_cache(
 
     const financeProfile = await prisma.userFinanceProfile.findUnique({
       where: { userId },
-      select: { monthlyIncome: true, paydayStart: true, currency: true },
+      select: { currency: true, paydayStart: true },
     });
 
     const currency = financeProfile?.currency ?? "BRL";
     const monthRange = getPaydayMonthRange(selectedMonth, financeProfile?.paydayStart ?? null);
 
-    const [extraIncomes, savingsAllocation, expenseGroups] = await Promise.all([
-      prisma.extraIncome.findMany({
-        where: { userId, referenceMonth: selectedMonth },
-        select: { amount: true },
-      }),
-      prisma.savingsAllocation.findUnique({
-        where: { userId_referenceMonth: { userId, referenceMonth: selectedMonth } },
-        select: { amount: true },
-      }),
-      prisma.expenseGroup.findMany({
-        where: {
-          userId,
-          OR: [
-            { referenceMonth: selectedMonth },
-            { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
-          ],
+    const expenseGroups = await prisma.expenseGroup.findMany({
+      where: {
+        userId,
+        OR: [
+          { referenceMonth: selectedMonth },
+          { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
+        ],
+      },
+      include: {
+        overrides: {
+          where: { userId, referenceMonth: selectedMonth },
+          take: 1,
         },
-        include: {
-          overrides: {
-            where: { userId, referenceMonth: selectedMonth },
-            take: 1,
-          },
-          expenses: {
-            where: { spentAt: { gte: monthRange.start, lt: monthRange.end } },
-            select: { amount: true },
-          },
+        expenses: {
+          where: { spentAt: { gte: monthRange.start, lt: monthRange.end } },
+          select: { amount: true },
         },
-      }),
-    ]);
+      },
+    });
 
     const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency });
-    const baseIncome = Number(financeProfile?.monthlyIncome ?? 0);
-    const extraIncome = extraIncomes.reduce((s, e) => s + Number(e.amount), 0);
-    const totalIncome = baseIncome + extraIncome;
-    const totalSavings = Number(savingsAllocation?.amount ?? 0);
-    const daysUntilPayday = getDaysUntilPayday(financeProfile?.paydayStart ?? null, today);
     const nextWeekend = getNextWeekendLabel(today);
 
     const groups = expenseGroups
@@ -118,9 +89,7 @@ const getCachedInsights = unstable_cache(
 
     const totalPlanned = groups.reduce((s, g) => s + g.planned, 0);
     const totalSpent = groups.reduce((s, g) => s + g.spent, 0);
-    const totalRemaining = totalIncome - totalSpent;
-    const sustainableDaily = daysUntilPayday > 0 ? totalRemaining / daysUntilPayday : 0;
-    const committedPct = totalIncome > 0 ? ((totalPlanned + totalSavings) / totalIncome) * 100 : 0;
+    const budgetUsagePct = totalPlanned > 0 ? ((totalSpent / totalPlanned) * 100).toFixed(1) : "0";
 
     const groupsText = groups
       .map((g) => {
@@ -129,27 +98,16 @@ const getCachedInsights = unstable_cache(
       })
       .join("\n");
 
-    const prompt = `Você é um assistente financeiro pessoal direto e prático. Analise os dados financeiros e responda APENAS com JSON válido, sem markdown, sem texto extra.
+    const prompt = `Você é um assistente financeiro pessoal direto e prático. Analise os dados de gastos e responda APENAS com JSON válido, sem markdown, sem texto extra.
 
 Data atual: ${today.toLocaleDateString("pt-BR")}
 Próximo fim de semana: ${nextWeekend}
-Dias até receber: ${daysUntilPayday}
 Mês de referência: ${selectedMonth}
 
-RENDA:
-- Base mensal: ${fmt.format(baseIncome)}
-- Extra do mês: ${fmt.format(extraIncome)}
-- Total: ${fmt.format(totalIncome)}
-
-COMPROMETIMENTO:
-- Gastos planejados: ${fmt.format(totalPlanned)} (${committedPct.toFixed(1)}% da renda)
-- Poupança: ${fmt.format(totalSavings)}
-- Sobra planejada: ${fmt.format(totalIncome - totalPlanned - totalSavings)}
-
-SITUAÇÃO REAL ATÉ HOJE:
-- Gasto registrado: ${fmt.format(totalSpent)}
-- Restante real: ${fmt.format(totalRemaining)}
-- Ritmo sustentável: ${fmt.format(sustainableDaily)}/dia
+ORÇAMENTO E GASTOS:
+- Total orçado: ${fmt.format(totalPlanned)}
+- Total gasto: ${fmt.format(totalSpent)} (${budgetUsagePct}% do orçamento)
+- Sobra do orçamento: ${fmt.format(totalPlanned - totalSpent)}
 
 GRUPOS:
 ${groupsText || "Nenhum grupo cadastrado."}

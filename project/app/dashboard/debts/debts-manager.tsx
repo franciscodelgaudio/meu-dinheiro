@@ -599,6 +599,7 @@ function UnpayButton({ debt }: { debt: DebtView }) {
 function DeleteDebtButton({ debt }: { debt: DebtView }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
 
   function handleDelete() {
     startTransition(async () => {
@@ -607,6 +608,7 @@ function DeleteDebtButton({ debt }: { debt: DebtView }) {
       if (result.status === "success") {
         toast.success(result.message);
         router.refresh();
+        setOpen(false);
         return;
       }
 
@@ -615,21 +617,41 @@ function DeleteDebtButton({ debt }: { debt: DebtView }) {
   }
 
   return (
-    <Button
-      variant="destructive"
-      size="icon-sm"
-      aria-label="Excluir divida"
-      onClick={handleDelete}
-      disabled={isPending}
-    >
-      <Trash2 />
-    </Button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="destructive" size="icon-sm" aria-label="Excluir divida">
+          <Trash2 />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Excluir divida?</DialogTitle>
+          <DialogDescription>Esta acao nao pode ser desfeita.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline">
+              Cancelar
+            </Button>
+          </DialogClose>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={isPending}
+          >
+            {isPending ? "Excluindo..." : "Excluir"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function DeleteCreditCardButton({ debt }: { debt: DebtView }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
 
   function handleDelete() {
     startTransition(async () => {
@@ -638,6 +660,7 @@ function DeleteCreditCardButton({ debt }: { debt: DebtView }) {
       if (result.status === "success") {
         toast.success(result.message);
         router.refresh();
+        setOpen(false);
         return;
       }
 
@@ -646,15 +669,34 @@ function DeleteCreditCardButton({ debt }: { debt: DebtView }) {
   }
 
   return (
-    <Button
-      variant="destructive"
-      size="icon-sm"
-      aria-label="Excluir compra parcelada"
-      onClick={handleDelete}
-      disabled={isPending}
-    >
-      <Trash2 />
-    </Button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="destructive" size="icon-sm" aria-label="Excluir compra parcelada">
+          <Trash2 />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Excluir compra parcelada?</DialogTitle>
+          <DialogDescription>Esta acao nao pode ser desfeita.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline">
+              Cancelar
+            </Button>
+          </DialogClose>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={isPending}
+          >
+            {isPending ? "Excluindo..." : "Excluir"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
