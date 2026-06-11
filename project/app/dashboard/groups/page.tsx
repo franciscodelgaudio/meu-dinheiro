@@ -215,7 +215,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const selectedMonthRange = getPaydayMonthRange(selectedMonth, financeProfile?.paydayStart ?? null);
   const isSelectedMonthClosed = selectedMonthRange.end <= new Date();
 
-  const [expenseGroups, extraIncomes, savingsEntries, monthActualExpenses] = await Promise.all([
+  const [expenseGroups, extraIncomes, savingsEntries] = await Promise.all([
     prisma.expenseGroup.findMany({
       where: {
         userId: user.id,
@@ -246,21 +246,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       },
       orderBy: { referenceMonth: "desc" },
     }),
-    isSelectedMonthClosed
-      ? prisma.expense.groupBy({
-          by: ["expenseGroupId"],
-          where: {
-            userId: user.id,
-            spentAt: { gte: selectedMonthRange.start, lt: selectedMonthRange.end },
-          },
-          _sum: { amount: true },
-        })
-      : Promise.resolve([]),
   ]);
-
-  const actualByGroup = new Map(
-    monthActualExpenses.map((e) => [e.expenseGroupId, Number(e._sum?.amount ?? 0)])
-  );
 
   const savingsAllocation = findActiveSavings(savingsEntries, selectedMonth);
   const activeExpenseGroups = expenseGroups.filter(
@@ -272,9 +258,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const groups = activeExpenseGroups.map((group) => {
     const override = group.overrides[0];
 
-    const monthlyAmount = isSelectedMonthClosed
-      ? (actualByGroup.get(group.id) ?? 0).toString()
-      : (override?.monthlyAmount ?? group.monthlyAmount).toString();
+    const monthlyAmount = (override?.monthlyAmount ?? group.monthlyAmount).toString();
 
     return {
       id: group.id,
