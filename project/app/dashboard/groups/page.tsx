@@ -331,6 +331,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         mode="expenses"
         view={view}
         yearData={yearData ?? undefined}
+        isSelectedMonthClosed={isSelectedMonthClosed}
       />
     </main>
   );

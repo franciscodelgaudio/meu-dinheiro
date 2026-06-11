@@ -1,6 +1,7 @@
 "use server";
 
 import { auth } from "@/auth";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
@@ -342,15 +343,31 @@ export async function deleteExpenseGroup(
     return { status: "error", message: "Sua sessao expirou. Entre novamente." };
   }
 
-  const result = await prisma.expenseGroup.deleteMany({
-    where: { id, userId },
-  });
+  let result;
+  try {
+    result = await prisma.expenseGroup.deleteMany({
+      where: { id, userId },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      return {
+        status: "error",
+        message:
+          "Nao e possivel remover um grupo que possui despesas registradas.",
+      };
+    }
+    return { status: "error", message: "Nao foi possivel remover o grupo." };
+  }
 
   if (result.count === 0) {
     return { status: "error", message: "Grupo de despesa nao encontrado." };
   }
 
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/groups");
   return { status: "success", message: "Grupo de despesa removido." };
 }
 

@@ -10,6 +10,7 @@ import {
   Eye,
   EyeOff,
   HandCoins,
+  Lock,
   Pencil,
   PiggyBank,
   Plus,
@@ -132,6 +133,7 @@ type ExpenseGroupsManagerProps = {
   mode: "planning" | "expenses";
   view?: "month" | "year";
   yearData?: YearMonthSummary[];
+  isSelectedMonthClosed?: boolean;
 };
 
 function formatMoney(value: number | string, currency: string) {
@@ -1248,6 +1250,7 @@ export function ExpenseGroupsManager({
   mode,
   view = "month",
   yearData,
+  isSelectedMonthClosed = false,
 }: ExpenseGroupsManagerProps) {
   const [sortField, setSortField] = useState<SortField>("priority");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -1420,6 +1423,12 @@ export function ExpenseGroupsManager({
                   {showZero ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </Button>
               </div>
+              {isSelectedMonthClosed && (
+                <div className="flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500">
+                  <Lock className="size-3.5 shrink-0" />
+                  <span>Mês fechado — valores exibidos são os gastos reais do período. Grupos com despesas não podem ser removidos.</span>
+                </div>
+              )}
             </CardHeader>
             <CardContent className="p-0 sm:p-6 sm:pt-0">
               {groups.length > 0 ? (
