@@ -98,16 +98,8 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     const firstMonth = `${selectedYear}-01`;
     const lastMonth = `${selectedYear}-12`;
     const paydayStart = financeProfile?.paydayStart ?? null;
-    const now = new Date();
 
-    const allYearMonths = Array.from({ length: 12 }, (_, i) =>
-      `${selectedYear}-${String(i + 1).padStart(2, "0")}`
-    );
-    const pastMonthRanges = allYearMonths
-      .map((m) => ({ month: m, range: getPaydayMonthRange(m, paydayStart) }))
-      .filter(({ range }) => range.end <= now);
-
-    const [yearGroups, yearExtraIncomes, yearSavings, yearActualExpenses] = await Promise.all([
+    const [yearGroups, yearExtraIncomes, yearSavings] = await Promise.all([
       prisma.expenseGroup.findMany({
         where: {
           userId: user.id,
@@ -141,30 +133,10 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         },
         orderBy: { referenceMonth: "desc" },
       }),
-      pastMonthRanges.length > 0
-        ? prisma.expense.findMany({
-            where: {
-              userId: user.id,
-              spentAt: {
-                gte: pastMonthRanges.reduce(
-                  (min, { range }) => (range.start < min ? range.start : min),
-                  pastMonthRanges[0].range.start,
-                ),
-                lt: pastMonthRanges.reduce(
-                  (max, { range }) => (range.end > max ? range.end : max),
-                  pastMonthRanges[0].range.end,
-                ),
-              },
-            },
-            select: { expenseGroupId: true, spentAt: true, amount: true },
-          })
-        : Promise.resolve([]),
     ]);
 
     yearData = Array.from({ length: 12 }, (_, i) => {
       const month = `${selectedYear}-${String(i + 1).padStart(2, "0")}`;
-      const monthRange = getPaydayMonthRange(month, paydayStart);
-      const isMonthClosed = monthRange.end <= now;
 
       const activeGroups = yearGroups.filter(
         (g) =>
@@ -174,17 +146,10 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             isGroupActiveInMonth(g.repeatMonths, month)),
       );
 
-      let totalExpenses: number;
-      if (isMonthClosed) {
-        totalExpenses = yearActualExpenses
-          .filter((e) => e.spentAt >= monthRange.start && e.spentAt < monthRange.end)
-          .reduce((sum, e) => sum + Number(e.amount), 0);
-      } else {
-        totalExpenses = activeGroups.reduce((sum, g) => {
-          const override = g.overrides.find((o) => o.referenceMonth === month);
-          return sum + Number(override?.monthlyAmount ?? g.monthlyAmount);
-        }, 0);
-      }
+      const totalExpenses = activeGroups.reduce((sum, g) => {
+        const override = g.overrides.find((o) => o.referenceMonth === month);
+        return sum + Number(override?.monthlyAmount ?? g.monthlyAmount);
+      }, 0);
 
       if (totalExpenses === 0) return null;
 
