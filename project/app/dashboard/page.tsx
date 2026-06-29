@@ -1,7 +1,15 @@
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
+import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
+import { ExpenseGroup } from "@/lib/models/expense-group";
+import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
+import { Expense } from "@/lib/models/expense";
+import { ExtraIncome } from "@/lib/models/extra-income";
+import { SavingsAllocation } from "@/lib/models/savings-allocation";
+import { CreditCardPurchase } from "@/lib/models/credit-card-purchase";
+import { IncomeReceipt } from "@/lib/models/income-receipt";
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
 import Link from "next/link";
 import {
   ChevronLeft,
@@ -17,7 +25,6 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { FinancialInsights, FinancialInsightsSkeleton } from "./financial-insights";
 import { getPaydayMonthRange, getCalendarMonth, getEffectiveCurrentMonth } from "@/lib/date-utils";
 import { IncomeReceiptBanner } from "./income-receipt-banner";
 
@@ -95,26 +102,59 @@ const quickLinks = [
   },
 ];
 
+type FinanceProfileLean = {
+  monthlyIncome: number;
+  currency: string;
+  paydayStart: number | null;
+};
+
+type ExpenseGroupLean = {
+  _id: { toString(): string };
+  referenceMonth: string;
+  monthlyAmount: number;
+};
+
+type ExpenseGroupOverrideLean = {
+  expenseGroupId: string;
+  monthlyAmount: number;
+};
+
+type ExtraIncomeLean = {
+  amount: number;
+};
+
+type SavingsAllocationLean = {
+  amount: number;
+};
+
+type CreditCardPurchaseLean = {
+  firstInstallmentMonth: string;
+  totalAmount: number;
+  installmentCount: number;
+};
+
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const params = await searchParams;
   const session = await auth();
 
   if (!session?.user?.email) redirect("/login");
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
+  await dbConnect();
+  const user = await User.findOne({ email: session.user.email })
+    .select("_id")
+    .lean<{ _id: { toString(): string } }>();
 
   if (!user) redirect("/login");
+  const userId = user._id.toString();
 
   const [financeProfile, incomeReceiptForCalendarMonth] = await Promise.all([
-    prisma.userFinanceProfile.findUnique({ where: { userId: user.id } }),
-    prisma.incomeReceipt.findUnique({
-      where: {
-        userId_referenceMonth: { userId: user.id, referenceMonth: getCalendarMonth() },
-      },
-    }),
+    UserFinanceProfile.findOne({ userId })
+      .select("monthlyIncome currency paydayStart")
+      .lean<FinanceProfileLean>(),
+    IncomeReceipt.findOne({
+      userId,
+      referenceMonth: getCalendarMonth(),
+    }).lean(),
   ]);
 
   const incomeConfirmed = incomeReceiptForCalendarMonth !== null;
@@ -132,40 +172,57 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     paydayStart !== null &&
     today.getDate() >= paydayStart &&
     !incomeConfirmed;
-  const expenseGroups = await prisma.expenseGroup.findMany({
-    where: {
-      userId: user.id,
-      OR: [
-        { referenceMonth: selectedMonth },
-        { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
-      ],
-    },
-    include: {
-      overrides: {
-        where: { userId: user.id, referenceMonth: selectedMonth },
-        take: 1,
-      },
-    },
-  });
-  const extraIncomes = await prisma.extraIncome.findMany({
-    where: { userId: user.id, referenceMonth: selectedMonth },
-  });
-  const savingsAllocation = await prisma.savingsAllocation.findUnique({
-    where: { userId_referenceMonth: { userId: user.id, referenceMonth: selectedMonth } },
-  });
-  const debtCommitments = await prisma.creditCardPurchase.findMany({
-    where: { userId: user.id, kind: "debt", firstInstallmentMonth: { lte: selectedMonth } },
-  });
+  const expenseGroups = await ExpenseGroup.find({
+    userId,
+    $or: [
+      { referenceMonth: selectedMonth },
+      { affectsFutureMonths: true, referenceMonth: { $lt: selectedMonth } },
+    ],
+  })
+    .select("_id referenceMonth monthlyAmount")
+    .lean<ExpenseGroupLean[]>();
+
+  const expenseGroupIds = expenseGroups.map((group) => group._id.toString());
+
+  const [expenseGroupOverrides, extraIncomes, savingsAllocation, debtCommitments] =
+    await Promise.all([
+      ExpenseGroupOverride.find({
+        userId,
+        referenceMonth: selectedMonth,
+        expenseGroupId: { $in: expenseGroupIds },
+      })
+        .select("expenseGroupId monthlyAmount")
+        .lean<ExpenseGroupOverrideLean[]>(),
+      ExtraIncome.find({ userId, referenceMonth: selectedMonth })
+        .select("amount")
+        .lean<ExtraIncomeLean[]>(),
+      SavingsAllocation.findOne({ userId, referenceMonth: selectedMonth })
+        .select("amount")
+        .lean<SavingsAllocationLean>(),
+      CreditCardPurchase.find({
+        userId,
+        kind: "debt",
+        firstInstallmentMonth: { $lte: selectedMonth },
+      })
+        .select("firstInstallmentMonth totalAmount installmentCount")
+        .lean<CreditCardPurchaseLean[]>(),
+    ]);
+
+  const overrideByGroupId = new Map(
+    expenseGroupOverrides.map((override) => [override.expenseGroupId, override]),
+  );
 
   const { start: monthStart, end: monthEnd } = getPaydayMonthRange(
     selectedMonth,
     financeProfile?.paydayStart ?? null,
   );
-  const actualExpensesAgg = await prisma.expense.aggregate({
-    where: { userId: user.id, spentAt: { gte: monthStart, lt: monthEnd } },
-    _sum: { amount: true },
-    _count: true,
-  });
+  const [actualExpensesAgg] = await Expense.aggregate<{
+    totalAmount: number;
+    count: number;
+  }>([
+    { $match: { userId, spentAt: { $gte: monthStart, $lt: monthEnd } } },
+    { $group: { _id: null, totalAmount: { $sum: "$amount" }, count: { $sum: 1 } } },
+  ]);
 
   const currency = financeProfile?.currency ?? "BRL";
   const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency });
@@ -174,7 +231,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const extraIncome = extraIncomes.reduce((t, e) => t + Number(e.amount), 0);
   const totalIncome = baseIncome + extraIncome;
   const totalExpenses = expenseGroups.reduce(
-    (t, g) => t + Number(g.overrides[0]?.monthlyAmount ?? g.monthlyAmount),
+    (t, g) => t + Number(overrideByGroupId.get(g._id.toString())?.monthlyAmount ?? g.monthlyAmount),
     0,
   );
   const totalSavings = Number(savingsAllocation?.amount ?? 0);
@@ -184,8 +241,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     const amounts = getInstallmentAmounts(Number(debt.totalAmount), debt.installmentCount);
     return total + (amounts[idx] ?? 0);
   }, 0);
-  const totalActualSpent = Number(actualExpensesAgg._sum.amount ?? 0);
-  const actualExpenseCount = actualExpensesAgg._count;
+  const totalActualSpent = Number(actualExpensesAgg?.totalAmount ?? 0);
+  const actualExpenseCount = actualExpensesAgg?.count ?? 0;
   const remaining = totalIncome - totalExpenses - totalSavings;
 
   const spentPct = totalExpenses > 0 ? Math.min((totalActualSpent / totalExpenses) * 100, 100) : 0;
@@ -390,15 +447,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </div>
       </div>
 
-      {/* AI Insights */}
-      <div>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-zinc-400">
-          Análise da IA
-        </p>
-        <Suspense fallback={<FinancialInsightsSkeleton />}>
-          <FinancialInsights selectedMonth={selectedMonth} />
-        </Suspense>
-      </div>
     </main>
   );
 }

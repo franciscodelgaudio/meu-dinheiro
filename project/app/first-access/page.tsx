@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, CircleDollarSign } from "lucide-react";
 
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
+import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 
 import { FirstAccessForm } from "./first-access-form";
 
@@ -14,23 +16,29 @@ export default async function FirstAccessPage() {
     redirect("/login");
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: {
-      name: true,
-      email: true,
-      image: true,
-      financeProfile: { select: { id: true } },
-    },
-  });
+  await dbConnect();
+  const user = await User.findOne({ email: session.user.email })
+    .select("_id name email image")
+    .lean<{ _id: { toString(): string }; name: string | null; email: string | null; image: string | null }>();
 
   if (!user) {
     redirect("/login");
   }
 
-  if (user.financeProfile) {
+  const financeProfile = await UserFinanceProfile.findOne({ userId: user._id.toString() })
+    .select("_id")
+    .lean();
+
+  if (financeProfile) {
     redirect("/dashboard");
   }
+
+  const userForForm = {
+    name: user.name,
+    email: user.email,
+    image: user.image,
+    financeProfile: null,
+  };
 
   return (
     <main className="min-h-screen bg-zinc-50 px-4 py-8 sm:px-6">
@@ -63,7 +71,7 @@ export default async function FirstAccessPage() {
           </div>
         </header>
 
-        <FirstAccessForm user={user} />
+        <FirstAccessForm user={userForForm} />
       </div>
     </main>
   );

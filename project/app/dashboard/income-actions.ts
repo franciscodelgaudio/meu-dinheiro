@@ -1,7 +1,9 @@
 "use server";
 
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
+import { IncomeReceipt } from "@/lib/models/income-receipt";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -9,14 +11,23 @@ export async function markIncomeReceived(referenceMonth: string) {
   const session = await auth();
   if (!session?.user?.email) throw new Error("Não autorizado");
 
-  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  await dbConnect();
+  const user = await User.findOne({ email: session.user.email })
+    .select("_id")
+    .lean<{ _id: { toString(): string } }>();
+
   if (!user) throw new Error("Usuário não encontrado");
 
-  await prisma.incomeReceipt.upsert({
-    where: { userId_referenceMonth: { userId: user.id, referenceMonth } },
-    create: { userId: user.id, referenceMonth },
-    update: { receivedAt: new Date() },
-  });
+  const userId = user._id.toString();
+
+  await IncomeReceipt.findOneAndUpdate(
+    { userId, referenceMonth },
+    {
+      $set: { receivedAt: new Date() },
+      $setOnInsert: { userId, referenceMonth },
+    },
+    { upsert: true, new: true },
+  );
 
   revalidatePath("/dashboard");
   redirect("/dashboard");

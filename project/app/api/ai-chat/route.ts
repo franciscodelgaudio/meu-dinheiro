@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
+import { ExpenseGroup } from "@/lib/models/expense-group";
+import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
+import { Expense } from "@/lib/models/expense";
 import { geminiModel } from "@/lib/gemini";
 
 interface ChatMessage {
@@ -8,16 +12,13 @@ interface ChatMessage {
   text: string;
 }
 
-// Server-side throttle: max 1 request per 7s per user (~8/min, under the 10 RPM free-tier limit)
 const THROTTLE_MS = 7000;
 const userLastRequest = new Map<string, number>();
 
 function checkThrottle(userId: string): number {
   const last = userLastRequest.get(userId) ?? 0;
   const elapsed = Date.now() - last;
-  if (elapsed < THROTTLE_MS) {
-    return Math.ceil((THROTTLE_MS - elapsed) / 1000);
-  }
+  if (elapsed < THROTTLE_MS) return Math.ceil((THROTTLE_MS - elapsed) / 1000);
   userLastRequest.set(userId, Date.now());
   return 0;
 }
@@ -45,15 +46,11 @@ function getReferenceMonth() {
 }
 
 function formatBRL(value: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value);
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
@@ -66,16 +63,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Mensagem vazia" }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true, name: true },
-  });
+  await dbConnect();
+  const user = await User.findOne({ email: session.user.email })
+    .select("_id name")
+    .lean<{ _id: { toString(): string }; name: string | null }>();
 
-  if (!user) {
-    return NextResponse.json({ error: "Usuario nao encontrado" }, { status: 404 });
-  }
+  if (!user) return NextResponse.json({ error: "Usuario nao encontrado" }, { status: 404 });
 
-  const throttleWait = checkThrottle(user.id);
+  const userId = user._id.toString();
+  const throttleWait = checkThrottle(userId);
   if (throttleWait > 0) {
     return NextResponse.json({ error: "rate_limit", retryAfter: throttleWait }, { status: 429 });
   }
@@ -87,50 +83,44 @@ export async function POST(req: NextRequest) {
   const dayOfMonth = now.getDate();
   const daysRemaining = daysInMonth - dayOfMonth + 1;
 
-  const rawGroups = await prisma.expenseGroup.findMany({
-    where: {
-      userId: user.id,
-      OR: [
-        { referenceMonth },
-        { affectsFutureMonths: true, referenceMonth: { lt: referenceMonth } },
-      ],
-    },
-    include: {
-      overrides: {
-        where: { userId: user.id, referenceMonth },
-        take: 1,
-      },
-    },
-    orderBy: [{ createdAt: "asc" }],
-  });
+  const rawGroups = await ExpenseGroup.find({
+    userId,
+    $or: [
+      { referenceMonth },
+      { affectsFutureMonths: true, referenceMonth: { $lt: referenceMonth } },
+    ],
+  })
+    .sort({ createdAt: 1 })
+    .lean<{ _id: { toString(): string }; name: string; monthlyAmount: number }[]>();
+
+  const groupIds = rawGroups.map((g) => g._id.toString());
+
+  const overrides = await ExpenseGroupOverride.find({
+    userId,
+    referenceMonth,
+    expenseGroupId: { $in: groupIds },
+  }).lean<{ expenseGroupId: string; name: string; monthlyAmount: number }[]>();
+
+  const overrideMap = new Map(overrides.map((o) => [o.expenseGroupId, o]));
 
   const startOfMonth = new Date(`${referenceMonth}-01T00:00:00.000Z`);
-  const endOfMonth = new Date(
-    `${referenceMonth}-${String(daysInMonth).padStart(2, "0")}T23:59:59.999Z`,
-  );
+  const endOfMonth = new Date(`${referenceMonth}-${String(daysInMonth).padStart(2, "0")}T23:59:59.999Z`);
 
-  const spentPerGroup = await prisma.expense.groupBy({
-    by: ["expenseGroupId"],
-    where: {
-      userId: user.id,
-      spentAt: { gte: startOfMonth, lte: endOfMonth },
-    },
-    _sum: { amount: true },
-  });
+  const spentAgg = await Expense.aggregate([
+    { $match: { userId, spentAt: { $gte: startOfMonth, $lte: endOfMonth } } },
+    { $group: { _id: "$expenseGroupId", total: { $sum: "$amount" } } },
+  ]);
 
-  const spentMap = new Map(
-    spentPerGroup.map((r) => [r.expenseGroupId, Number(r._sum.amount ?? 0)]),
-  );
+  const spentMap = new Map<string, number>(spentAgg.map((r: { _id: string; total: number }) => [r._id, r.total]));
 
   const groups = rawGroups.map((group) => {
-    const override = group.overrides[0];
+    const override = overrideMap.get(group._id.toString());
     const name = override?.name ?? group.name;
     const budget = Number(override?.monthlyAmount ?? group.monthlyAmount);
-    const spent = spentMap.get(group.id) ?? 0;
+    const spent = spentMap.get(group._id.toString()) ?? 0;
     const remaining = budget - spent;
     const percentUsed = budget > 0 ? Math.round((spent / budget) * 100) : 0;
     const dailyAllowance = daysRemaining > 0 && remaining > 0 ? remaining / daysRemaining : 0;
-
     return { name, budget, spent, remaining, percentUsed, dailyAllowance };
   });
 
@@ -140,7 +130,9 @@ export async function POST(req: NextRequest) {
   const budgetUsagePercent = totalPlanned > 0 ? Math.round((totalSpent / totalPlanned) * 100) : 0;
 
   const groupLines = groups
-    .map((g) => `${g.name}: orc ${formatBRL(g.budget)} gasto ${formatBRL(g.spent)} (${g.percentUsed}%) sobra ${formatBRL(g.remaining)} ~${formatBRL(g.dailyAllowance)}/dia`)
+    .map((g) =>
+      `${g.name}: orc ${formatBRL(g.budget)} gasto ${formatBRL(g.spent)} (${g.percentUsed}%) sobra ${formatBRL(g.remaining)} ~${formatBRL(g.dailyAllowance)}/dia`,
+    )
     .join("\n");
 
   const systemPrompt = `Voce e o assistente financeiro pessoal de ${user.name ?? "usuario"}. Responda em PT-BR. Nunca invente dados.
@@ -170,10 +162,7 @@ ${groupLines}
   try {
     const chat = geminiModel.startChat({
       history: chatHistory,
-      systemInstruction: {
-        role: "user",
-        parts: [{ text: systemPrompt }],
-      },
+      systemInstruction: { role: "user", parts: [{ text: systemPrompt }] },
     });
 
     const result = await chat.sendMessageStream(message.trim());
@@ -186,9 +175,7 @@ ${groupLines}
         try {
           for await (const chunk of result.stream) {
             const text = chunk.text();
-            if (text) {
-              controller.enqueue(encoder.encode(text));
-            }
+            if (text) controller.enqueue(encoder.encode(text));
           }
           const response = await result.response;
           const usage = response.usageMetadata;
@@ -230,8 +217,7 @@ ${groupLines}
       msg.toLowerCase().includes("too many requests") ||
       msg.toLowerCase().includes("quota exceeded") ||
       msg.toLowerCase().includes("resource_exhausted");
-    const isSafety =
-      msg.toLowerCase().includes("safety") || msg.toLowerCase().includes("block");
+    const isSafety = msg.toLowerCase().includes("safety") || msg.toLowerCase().includes("block");
 
     if (isRateLimit) {
       const isDaily =

@@ -1,13 +1,17 @@
 "use server";
 
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
+import { ExpenseGroup } from "@/lib/models/expense-group";
+import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
+import { Expense } from "@/lib/models/expense";
+import { CreditCardPurchase } from "@/lib/models/credit-card-purchase";
 import { revalidatePath, revalidateTag } from "next/cache";
 import {
   analyzeQuickExpenseWithAI,
   type QuickExpenseBatchSuggestion,
 } from "./quick-capture";
-import { getPaydayMonthRange } from "@/lib/date-utils";
 
 export type ExpenseActionState = {
   status?: "success" | "error";
@@ -24,7 +28,7 @@ type ExpenseInput = {
   spentAt: Date;
   title: string;
   expenseGroupId: string;
-  amount: string;
+  amount: number;
   behaviorType: string;
   coverageDays: number;
 };
@@ -58,36 +62,29 @@ async function getCurrentUserId() {
     return null;
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
+  await dbConnect();
+  const user = await User.findOne({ email: session.user.email })
+    .select("_id")
+    .lean<{ _id: { toString(): string } }>();
 
-  return user?.id ?? null;
+  return user ? user._id.toString() : null;
 }
 
 async function getPaydayStart(userId: string): Promise<number | null> {
-  const profile = await prisma.userFinanceProfile.findUnique({
-    where: { userId },
-    select: { paydayStart: true },
-  });
+  const { UserFinanceProfile } = await import("@/lib/models/user-finance-profile");
+  const profile = await UserFinanceProfile.findOne({ userId })
+    .select("paydayStart")
+    .lean<{ paydayStart?: number | null }>();
   return profile?.paydayStart ?? null;
 }
 
 function getTodayInputDate() {
   const now = new Date();
-
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-    2,
-    "0",
-  )}-${String(now.getDate()).padStart(2, "0")}`;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 function normalizeReferenceMonth(value: string) {
-  if (/^\d{4}-\d{2}$/.test(value)) {
-    return value;
-  }
-
+  if (/^\d{4}-\d{2}$/.test(value)) return value;
   return getTodayInputDate().slice(0, 7);
 }
 
@@ -95,40 +92,18 @@ function parseExpenseInput(formData: FormData): ExpenseInput | string {
   const spentAtText = String(formData.get("spentAt") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
   const expenseGroupId = String(formData.get("expenseGroupId") ?? "").trim();
-  const amountText = String(formData.get("amount") ?? "")
-    .trim()
-    .replace(",", ".");
+  const amountText = String(formData.get("amount") ?? "").trim().replace(",", ".");
   const amount = Number(amountText);
   const behaviorType = String(formData.get("behaviorType") ?? "daily").trim();
   const coverageDaysText = String(formData.get("coverageDays") ?? "1").trim();
   const coverageDays = Number(coverageDaysText);
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(spentAtText)) {
-    return "Informe uma data valida.";
-  }
-
-  if (title.length < 2) {
-    return "Informe uma descricao ou titulo com pelo menos 2 caracteres.";
-  }
-
-  if (!expenseGroupId) {
-    return "Escolha um grupo de despesas.";
-  }
-
-  if (!amountText || !Number.isFinite(amount) || amount <= 0) {
-    return "Informe quanto voce gastou.";
-  }
-
-  if (!EXPENSE_BEHAVIOR_TYPES.has(behaviorType)) {
-    return "Escolha um tipo de comportamento valido para o gasto.";
-  }
-
-  if (
-    !coverageDaysText ||
-    !Number.isInteger(coverageDays) ||
-    coverageDays < 1 ||
-    coverageDays > 365
-  ) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(spentAtText)) return "Informe uma data valida.";
+  if (title.length < 2) return "Informe uma descricao ou titulo com pelo menos 2 caracteres.";
+  if (!expenseGroupId) return "Escolha um grupo de despesas.";
+  if (!amountText || !Number.isFinite(amount) || amount <= 0) return "Informe quanto voce gastou.";
+  if (!EXPENSE_BEHAVIOR_TYPES.has(behaviorType)) return "Escolha um tipo de comportamento valido para o gasto.";
+  if (!coverageDaysText || !Number.isInteger(coverageDays) || coverageDays < 1 || coverageDays > 365) {
     return "Informe quantos dias esse gasto cobre, entre 1 e 365.";
   }
 
@@ -136,61 +111,33 @@ function parseExpenseInput(formData: FormData): ExpenseInput | string {
     spentAt: new Date(`${spentAtText}T12:00:00.000Z`),
     title,
     expenseGroupId,
-    amount: amount.toFixed(2),
+    amount: Number(amount.toFixed(2)),
     behaviorType,
     coverageDays,
   };
 }
 
-function parseCreditCardExpenseInput(
-  formData: FormData,
-): CreditCardExpenseInput | string {
+function parseCreditCardExpenseInput(formData: FormData): CreditCardExpenseInput | string {
   const purchasedAtText = String(formData.get("purchasedAt") ?? "").trim();
-  const firstInstallmentMonth = String(
-    formData.get("firstInstallmentMonth") ?? "",
-  ).trim();
+  const firstInstallmentMonth = String(formData.get("firstInstallmentMonth") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
-  const totalAmountText = String(formData.get("totalAmount") ?? "")
-    .trim()
-    .replace(",", ".");
+  const totalAmountText = String(formData.get("totalAmount") ?? "").trim().replace(",", ".");
   const totalAmount = Number(totalAmountText);
-  const installmentCountText = String(
-    formData.get("installmentCount") ?? "1",
-  ).trim();
+  const installmentCountText = String(formData.get("installmentCount") ?? "1").trim();
   const installmentCount = Number(installmentCountText);
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(purchasedAtText)) {
-    return "Informe uma data de compra valida.";
-  }
-
-  if (!/^\d{4}-\d{2}$/.test(firstInstallmentMonth)) {
-    return "Escolha o primeiro mes da fatura.";
-  }
-
-  if (title.length < 2) {
-    return "Informe uma descricao ou titulo com pelo menos 2 caracteres.";
-  }
-
-  if (!totalAmountText || !Number.isFinite(totalAmount) || totalAmount <= 0) {
-    return "Informe o valor total da compra.";
-  }
-
-  if (
-    !installmentCountText ||
-    !Number.isInteger(installmentCount) ||
-    installmentCount < 1 ||
-    installmentCount > 120
-  ) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(purchasedAtText)) return "Informe uma data de compra valida.";
+  if (!/^\d{4}-\d{2}$/.test(firstInstallmentMonth)) return "Escolha o primeiro mes da fatura.";
+  if (title.length < 2) return "Informe uma descricao ou titulo com pelo menos 2 caracteres.";
+  if (!totalAmountText || !Number.isFinite(totalAmount) || totalAmount <= 0) return "Informe o valor total da compra.";
+  if (!installmentCountText || !Number.isInteger(installmentCount) || installmentCount < 1 || installmentCount > 120) {
     return "Informe uma quantidade de parcelas entre 1 e 120.";
   }
 
   const paymentDayText = String(formData.get("paymentDay") ?? "").trim();
   const paymentDay = paymentDayText ? Number(paymentDayText) : null;
 
-  if (
-    paymentDay !== null &&
-    (!Number.isInteger(paymentDay) || paymentDay < 1 || paymentDay > 31)
-  ) {
+  if (paymentDay !== null && (!Number.isInteger(paymentDay) || paymentDay < 1 || paymentDay > 31)) {
     return "O dia de vencimento da fatura deve ser entre 1 e 31.";
   }
 
@@ -207,65 +154,48 @@ function parseCreditCardExpenseInput(
 function getMonthDistance(startMonth: string, endMonth: string) {
   const [startYear, startMonthNumber] = startMonth.split("-").map(Number);
   const [endYear, endMonthNumber] = endMonth.split("-").map(Number);
-
   return (endYear - startYear) * 12 + (endMonthNumber - startMonthNumber);
 }
 
 function addMonths(referenceMonth: string, monthsToAdd: number) {
   const [year, month] = referenceMonth.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1 + monthsToAdd, 1));
-
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(
-    2,
-    "0",
-  )}`;
-}
-
-function getInstallmentDate(referenceMonth: string) {
-  return new Date(`${referenceMonth}-01T12:00:00.000Z`);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function getInstallmentAmounts(totalAmount: number, installmentCount: number) {
   const totalInCents = Math.round(totalAmount * 100);
   const baseInCents = Math.floor(totalInCents / installmentCount);
   const remainder = totalInCents % installmentCount;
-
   return Array.from({ length: installmentCount }, (_, index) => {
     const cents = baseInCents + (index < remainder ? 1 : 0);
-
-    return (cents / 100).toFixed(2);
+    return cents / 100;
   });
 }
 
 async function ensureCreditCardGroup(userId: string, referenceMonth: string) {
-  const existingGroup = await prisma.expenseGroup.findFirst({
-    where: {
-      userId,
-      affectsFutureMonths: true,
-      name: CREDIT_CARD_GROUP_NAME,
-    },
-    orderBy: { createdAt: "asc" },
-    select: { id: true },
+  const existingGroup = await ExpenseGroup.findOne({
+    userId,
+    affectsFutureMonths: true,
+    name: CREDIT_CARD_GROUP_NAME,
+  })
+    .sort({ createdAt: 1 })
+    .select("_id")
+    .lean<{ _id: { toString(): string } }>();
+
+  if (existingGroup) return existingGroup._id.toString();
+
+  const group = await ExpenseGroup.create({
+    userId,
+    referenceMonth,
+    name: CREDIT_CARD_GROUP_NAME,
+    monthlyAmount: 0,
+    affectsFutureMonths: true,
+    color: CREDIT_CARD_GROUP_COLOR,
+    description: "Grupo criado automaticamente para compras no cartao.",
   });
 
-  if (existingGroup) {
-    return existingGroup.id;
-  }
-
-  const group = await prisma.expenseGroup.create({
-    data: {
-      userId,
-      referenceMonth,
-      name: CREDIT_CARD_GROUP_NAME,
-      monthlyAmount: "0.00",
-      affectsFutureMonths: true,
-      color: CREDIT_CARD_GROUP_COLOR,
-      description: "Grupo criado automaticamente para compras no cartao.",
-    },
-    select: { id: true },
-  });
-
-  return group.id;
+  return group._id.toString();
 }
 
 async function syncCreditCardMonthlyAmount(
@@ -273,63 +203,44 @@ async function syncCreditCardMonthlyAmount(
   expenseGroupId: string,
   referenceMonth: string,
 ) {
-  const purchases = await prisma.creditCardPurchase.findMany({
-    where: {
-      userId,
-      expenseGroupId,
-      kind: "credit_card",
-      firstInstallmentMonth: { lte: referenceMonth },
-    },
-    select: {
-      totalAmount: true,
-      installmentCount: true,
-      firstInstallmentMonth: true,
-    },
-  });
+  const purchases = await CreditCardPurchase.find({
+    userId,
+    expenseGroupId,
+    kind: "credit_card",
+    firstInstallmentMonth: { $lte: referenceMonth },
+  })
+    .select("totalAmount installmentCount firstInstallmentMonth")
+    .lean<{ totalAmount: number; installmentCount: number; firstInstallmentMonth: string }[]>();
 
   let totalValue = 0;
 
   for (const purchase of purchases) {
     const idx = getMonthDistance(purchase.firstInstallmentMonth, referenceMonth);
-
     if (idx >= 0 && idx < purchase.installmentCount) {
       const amounts = getInstallmentAmounts(Number(purchase.totalAmount), purchase.installmentCount);
-      totalValue += Number(amounts[idx] ?? 0);
+      totalValue += amounts[idx] ?? 0;
     }
   }
 
   if (totalValue === 0) {
-    await prisma.expenseGroupOverride.deleteMany({
-      where: { expenseGroupId, referenceMonth },
-    });
+    await ExpenseGroupOverride.deleteOne({ expenseGroupId, referenceMonth });
     return;
   }
 
-  const monthlyAmount = totalValue.toFixed(2);
-
-  await prisma.expenseGroupOverride.upsert({
-    where: {
-      expenseGroupId_referenceMonth: {
-        expenseGroupId,
-        referenceMonth,
+  await ExpenseGroupOverride.findOneAndUpdate(
+    { expenseGroupId, referenceMonth },
+    {
+      $set: {
+        userId,
+        name: CREDIT_CARD_GROUP_NAME,
+        monthlyAmount: Number(totalValue.toFixed(2)),
+        color: CREDIT_CARD_GROUP_COLOR,
+        description: "Fatura calculada automaticamente pelas compras no cartao.",
       },
+      $setOnInsert: { expenseGroupId, referenceMonth },
     },
-    create: {
-      userId,
-      expenseGroupId,
-      referenceMonth,
-      name: CREDIT_CARD_GROUP_NAME,
-      monthlyAmount,
-      color: CREDIT_CARD_GROUP_COLOR,
-      description: "Fatura calculada automaticamente pelas compras no cartao.",
-    },
-    update: {
-      name: CREDIT_CARD_GROUP_NAME,
-      monthlyAmount,
-      color: CREDIT_CARD_GROUP_COLOR,
-      description: "Fatura calculada automaticamente pelas compras no cartao.",
-    },
-  });
+    { upsert: true, new: true },
+  );
 }
 
 export async function createExpense(
@@ -337,32 +248,19 @@ export async function createExpense(
   formData: FormData,
 ): Promise<ExpenseActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const input = parseExpenseInput(formData);
+  if (typeof input === "string") return { status: "error", message: input };
 
-  if (typeof input === "string") {
-    return { status: "error", message: input };
-  }
+  await dbConnect();
+  const group = await ExpenseGroup.findOne({ _id: input.expenseGroupId, userId })
+    .select("_id")
+    .lean();
 
-  const group = await prisma.expenseGroup.findFirst({
-    where: { id: input.expenseGroupId, userId },
-    select: { id: true },
-  });
+  if (!group) return { status: "error", message: "Grupo de despesas nao encontrado." };
 
-  if (!group) {
-    return { status: "error", message: "Grupo de despesas nao encontrado." };
-  }
-
-  await prisma.expense.create({
-    data: {
-      userId,
-      ...input,
-    },
-  });
+  await Expense.create({ userId, ...input });
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");
@@ -376,13 +274,9 @@ export async function createQuickExpenses(
   formData: FormData,
 ): Promise<ExpenseActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const rowCount = Number(String(formData.get("rowCount") ?? "0"));
-
   if (!Number.isInteger(rowCount) || rowCount < 1 || rowCount > 20) {
     return { status: "error", message: "Nenhum gasto valido para salvar." };
   }
@@ -393,50 +287,26 @@ export async function createQuickExpenses(
     const row = new FormData();
     row.set("spentAt", String(formData.get(`items.${index}.spentAt`) ?? ""));
     row.set("title", String(formData.get(`items.${index}.title`) ?? ""));
-    row.set(
-      "expenseGroupId",
-      String(formData.get(`items.${index}.expenseGroupId`) ?? ""),
-    );
+    row.set("expenseGroupId", String(formData.get(`items.${index}.expenseGroupId`) ?? ""));
     row.set("amount", String(formData.get(`items.${index}.amount`) ?? ""));
-    row.set(
-      "behaviorType",
-      String(formData.get(`items.${index}.behaviorType`) ?? ""),
-    );
-    row.set(
-      "coverageDays",
-      String(formData.get(`items.${index}.coverageDays`) ?? ""),
-    );
+    row.set("behaviorType", String(formData.get(`items.${index}.behaviorType`) ?? ""));
+    row.set("coverageDays", String(formData.get(`items.${index}.coverageDays`) ?? ""));
 
     const input = parseExpenseInput(row);
-
-    if (typeof input === "string") {
-      return {
-        status: "error",
-        message: `Linha ${index + 1}: ${input}`,
-      };
-    }
+    if (typeof input === "string") return { status: "error", message: `Linha ${index + 1}: ${input}` };
 
     inputs.push(input);
   }
 
-  const groupIds = Array.from(new Set(inputs.map((input) => input.expenseGroupId)));
-  const groupCount = await prisma.expenseGroup.count({
-    where: {
-      userId,
-      id: { in: groupIds },
-    },
-  });
+  await dbConnect();
+  const groupIds = Array.from(new Set(inputs.map((i) => i.expenseGroupId)));
+  const groupCount = await ExpenseGroup.countDocuments({ userId, _id: { $in: groupIds } });
 
   if (groupCount !== groupIds.length) {
     return { status: "error", message: "Um dos grupos nao foi encontrado." };
   }
 
-  await prisma.expense.createMany({
-    data: inputs.map((input) => ({
-      userId,
-      ...input,
-    })),
-  });
+  await Expense.insertMany(inputs.map((input) => ({ userId, ...input })));
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");
@@ -444,10 +314,7 @@ export async function createQuickExpenses(
 
   return {
     status: "success",
-    message:
-      inputs.length === 1
-        ? "Gasto registrado."
-        : `${inputs.length} gastos registrados.`,
+    message: inputs.length === 1 ? "Gasto registrado." : `${inputs.length} gastos registrados.`,
   };
 }
 
@@ -456,72 +323,58 @@ export async function analyzeQuickExpense(
   formData: FormData,
 ): Promise<QuickExpenseActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const text = String(formData.get("quickText") ?? "").trim();
   const images = formData.getAll("quickImage").filter((f): f is File => f instanceof File && f.size > 0);
-  const selectedMonth = normalizeReferenceMonth(
-    String(formData.get("selectedMonth") ?? ""),
-  );
+  const selectedMonth = normalizeReferenceMonth(String(formData.get("selectedMonth") ?? ""));
 
   if (!text && images.length === 0) {
-    return {
-      status: "error",
-      message: "Digite um gasto ou envie uma imagem para interpretar.",
-    };
+    return { status: "error", message: "Digite um gasto ou envie uma imagem para interpretar." };
   }
 
-  const groups = await prisma.expenseGroup.findMany({
-    where: {
-      userId,
-      OR: [
-        { referenceMonth: selectedMonth },
-        { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
-      ],
-    },
-    include: {
-      overrides: {
-        where: { userId, referenceMonth: selectedMonth },
-        take: 1,
-      },
-    },
-    orderBy: [{ referenceMonth: "desc" }, { createdAt: "desc" }],
-  });
+  await dbConnect();
+  const groups = await ExpenseGroup.find({
+    userId,
+    $or: [
+      { referenceMonth: selectedMonth },
+      { affectsFutureMonths: true, referenceMonth: { $lt: selectedMonth } },
+    ],
+  })
+    .sort({ referenceMonth: -1, createdAt: -1 })
+    .lean<{ _id: { toString(): string }; name: string }[]>();
+
+  const groupIds = groups.map((g) => g._id.toString());
+  const overrides = await ExpenseGroupOverride.find({
+    userId,
+    referenceMonth: selectedMonth,
+    expenseGroupId: { $in: groupIds },
+  })
+    .lean<{ expenseGroupId: string; name: string }[]>();
+
+  const overrideMap = new Map(overrides.map((o) => [o.expenseGroupId, o]));
 
   if (groups.length === 0) {
-    return {
-      status: "error",
-      message: "Crie um grupo de despesas antes de usar a captura rapida.",
-    };
+    return { status: "error", message: "Crie um grupo de despesas antes de usar a captura rapida." };
   }
 
   try {
     const suggestion = await analyzeQuickExpenseWithAI({
       text,
       images,
-      groups: groups.map((group) => ({
-        id: group.id,
-        name: group.overrides[0]?.name ?? group.name,
-      })),
+      groups: groups.map((group) => {
+        const override = overrideMap.get(group._id.toString());
+        return { id: group._id.toString(), name: override?.name ?? group.name };
+      }),
       today: getTodayInputDate(),
       selectedMonth,
     });
 
-    return {
-      status: "success",
-      message: "Gasto interpretado. Confira antes de salvar.",
-      suggestion,
-    };
+    return { status: "success", message: "Gasto interpretado. Confira antes de salvar.", suggestion };
   } catch (error) {
     return {
       status: "error",
-      message:
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel interpretar o gasto agora.",
+      message: error instanceof Error ? error.message : "Nao foi possivel interpretar o gasto agora.",
     };
   }
 }
@@ -531,40 +384,30 @@ export async function createCreditCardExpense(
   formData: FormData,
 ): Promise<ExpenseActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const input = parseCreditCardExpenseInput(formData);
+  if (typeof input === "string") return { status: "error", message: input };
 
-  if (typeof input === "string") {
-    return { status: "error", message: input };
-  }
-
+  await dbConnect();
   const groupId = await ensureCreditCardGroup(userId, input.firstInstallmentMonth);
-  const installmentAmounts = getInstallmentAmounts(
-    input.totalAmount,
-    input.installmentCount,
-  );
+  const installmentAmounts = getInstallmentAmounts(input.totalAmount, input.installmentCount);
   const referenceMonths = installmentAmounts.map((_, index) =>
     addMonths(input.firstInstallmentMonth, index),
   );
 
-  await prisma.creditCardPurchase.create({
-    data: {
-      userId,
-      expenseGroupId: groupId,
-      kind: "credit_card",
-      source: CREDIT_CARD_GROUP_NAME,
-      purchasedAt: input.purchasedAt,
-      firstInstallmentMonth: input.firstInstallmentMonth,
-      title: input.title,
-      totalAmount: input.totalAmount.toFixed(2),
-      installmentAmount: installmentAmounts[0],
-      installmentCount: input.installmentCount,
-      paymentDay: input.paymentDay,
-    },
+  await CreditCardPurchase.create({
+    userId,
+    expenseGroupId: groupId,
+    kind: "credit_card",
+    source: CREDIT_CARD_GROUP_NAME,
+    purchasedAt: input.purchasedAt,
+    firstInstallmentMonth: input.firstInstallmentMonth,
+    title: input.title,
+    totalAmount: Number(input.totalAmount.toFixed(2)),
+    installmentAmount: installmentAmounts[0],
+    installmentCount: input.installmentCount,
+    paymentDay: input.paymentDay,
   });
 
   for (const referenceMonth of referenceMonths) {
@@ -579,9 +422,7 @@ export async function createCreditCardExpense(
   return {
     status: "success",
     message:
-      input.installmentCount > 1
-        ? "Compra no cartao parcelada registrada."
-        : "Compra no cartao registrada.",
+      input.installmentCount > 1 ? "Compra no cartao parcelada registrada." : "Compra no cartao registrada.",
   };
 }
 
@@ -590,39 +431,24 @@ export async function updateExpense(
   formData: FormData,
 ): Promise<ExpenseActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const id = String(formData.get("id") ?? "").trim();
   const input = parseExpenseInput(formData);
 
-  if (!id) {
-    return { status: "error", message: "Gasto nao encontrado." };
-  }
+  if (!id) return { status: "error", message: "Gasto nao encontrado." };
+  if (typeof input === "string") return { status: "error", message: input };
 
-  if (typeof input === "string") {
-    return { status: "error", message: input };
-  }
+  await dbConnect();
+  const group = await ExpenseGroup.findOne({ _id: input.expenseGroupId, userId })
+    .select("_id")
+    .lean();
 
-  const group = await prisma.expenseGroup.findFirst({
-    where: { id: input.expenseGroupId, userId },
-    select: { id: true },
-  });
+  if (!group) return { status: "error", message: "Grupo de despesas nao encontrado." };
 
-  if (!group) {
-    return { status: "error", message: "Grupo de despesas nao encontrado." };
-  }
+  const result = await Expense.updateOne({ _id: id, userId }, { $set: input });
 
-  const result = await prisma.expense.updateMany({
-    where: { id, userId },
-    data: input,
-  });
-
-  if (result.count === 0) {
-    return { status: "error", message: "Gasto nao encontrado." };
-  }
+  if (result.matchedCount === 0) return { status: "error", message: "Gasto nao encontrado." };
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/expenses");
@@ -633,37 +459,27 @@ export async function updateExpense(
 
 export async function deleteExpense(id: string): Promise<ExpenseActionState> {
   const userId = await getCurrentUserId();
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  await dbConnect();
+  const expense = await Expense.findOne({ _id: id, userId })
+    .select("expenseGroupId spentAt creditCardPurchaseId")
+    .lean<{
+      expenseGroupId: string;
+      spentAt: Date;
+      creditCardPurchaseId: string | null;
+    }>();
 
-  const expense = await prisma.expense.findFirst({
-    where: { id, userId },
-    select: {
-      expenseGroupId: true,
-      spentAt: true,
-      creditCardPurchaseId: true,
-      expenseGroup: {
-        select: { name: true },
-      },
-    },
-  });
+  if (!expense) return { status: "error", message: "Gasto nao encontrado." };
 
-  if (!expense) {
-    return { status: "error", message: "Gasto nao encontrado." };
-  }
+  const group = await ExpenseGroup.findById(expense.expenseGroupId)
+    .select("name")
+    .lean<{ name: string }>();
 
-  await prisma.expense.delete({ where: { id } });
+  await Expense.deleteOne({ _id: id });
 
-  if (
-    expense.creditCardPurchaseId ||
-    expense.expenseGroup.name === CREDIT_CARD_GROUP_NAME
-  ) {
-    const referenceMonth = `${expense.spentAt.getUTCFullYear()}-${String(
-      expense.spentAt.getUTCMonth() + 1,
-    ).padStart(2, "0")}`;
-
+  if (expense.creditCardPurchaseId || group?.name === CREDIT_CARD_GROUP_NAME) {
+    const referenceMonth = `${expense.spentAt.getUTCFullYear()}-${String(expense.spentAt.getUTCMonth() + 1).padStart(2, "0")}`;
     await syncCreditCardMonthlyAmount(userId, expense.expenseGroupId, referenceMonth);
   }
 

@@ -1,5 +1,11 @@
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
+import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
+import { IncomeReceipt } from "@/lib/models/income-receipt";
+import { ExpenseGroup } from "@/lib/models/expense-group";
+import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
+import { Expense } from "@/lib/models/expense";
 import { redirect } from "next/navigation";
 
 import { ExpensesManager } from "./expenses-manager";
@@ -21,6 +27,40 @@ function normalizeReferenceMonth(
   return getEffectiveCurrentMonth(paydayStart, incomeConfirmed);
 }
 
+type FinanceProfileLean = {
+  currency: string;
+  paydayStart: number | null;
+};
+
+type ExpenseGroupLean = {
+  _id: { toString(): string };
+  referenceMonth: string;
+  name: string;
+  monthlyAmount: number;
+  color: string;
+};
+
+type ExpenseGroupOverrideLean = {
+  expenseGroupId: string;
+  name: string;
+  monthlyAmount: number;
+  color: string;
+};
+
+type ExpenseLean = {
+  _id: { toString(): string };
+  expenseGroupId: string;
+  creditCardPurchaseId: string | null;
+  installmentNumber: number | null;
+  installmentCount: number | null;
+  spentAt: Date;
+  title: string;
+  amount: number;
+  behaviorType: string;
+  coverageDays: number;
+  createdAt: Date;
+};
+
 export default async function ExpensesPage({ searchParams }: ExpensesPageProps) {
   const params = await searchParams;
   const session = await auth();
@@ -29,23 +69,24 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     redirect("/login");
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
+  await dbConnect();
+  const user = await User.findOne({ email: session.user.email })
+    .select("_id")
+    .lean<{ _id: { toString(): string } }>();
 
   if (!user) {
     redirect("/login");
   }
+  const userId = user._id.toString();
 
   const [financeProfile, incomeReceipt] = await Promise.all([
-    prisma.userFinanceProfile.findUnique({
-      where: { userId: user.id },
-      select: { currency: true, paydayStart: true, paydayEnd: true, monthlyIncome: true },
-    }),
-    prisma.incomeReceipt.findUnique({
-      where: { userId_referenceMonth: { userId: user.id, referenceMonth: getCalendarMonth() } },
-    }),
+    UserFinanceProfile.findOne({ userId })
+      .select("currency paydayStart")
+      .lean<FinanceProfileLean>(),
+    IncomeReceipt.findOne({
+      userId,
+      referenceMonth: getCalendarMonth(),
+    }).lean(),
   ]);
 
   const selectedMonth = normalizeReferenceMonth(
@@ -54,54 +95,45 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     incomeReceipt !== null,
   );
   const monthRange = getPaydayMonthRange(selectedMonth, financeProfile?.paydayStart ?? null);
-  const extraIncomes = await prisma.extraIncome.findMany({
-    where: { userId: user.id, referenceMonth: selectedMonth },
-    select: { amount: true },
-  });
-  const totalIncome =
-    Number(financeProfile?.monthlyIncome ?? 0) +
-    extraIncomes.reduce((sum, e) => sum + Number(e.amount), 0);
-  const expenseGroups = await prisma.expenseGroup.findMany({
-    where: {
-      userId: user.id,
-      OR: [
-        { referenceMonth: selectedMonth },
-        { affectsFutureMonths: true, referenceMonth: { lt: selectedMonth } },
-      ],
-    },
-    include: {
-      overrides: {
-        where: { userId: user.id, referenceMonth: selectedMonth },
-        take: 1,
-      },
-    },
-    orderBy: [{ referenceMonth: "desc" }, { createdAt: "desc" }],
-  });
-  const expenses = await prisma.expense.findMany({
-    where: {
-      userId: user.id,
+  const expenseGroups = await ExpenseGroup.find({
+    userId,
+    $or: [
+      { referenceMonth: selectedMonth },
+      { affectsFutureMonths: true, referenceMonth: { $lt: selectedMonth } },
+    ],
+  })
+    .sort({ referenceMonth: -1, createdAt: -1 })
+    .lean<ExpenseGroupLean[]>();
+
+  const expenseGroupIds = expenseGroups.map((group) => group._id.toString());
+  const [expenseGroupOverrides, expenses] = await Promise.all([
+    ExpenseGroupOverride.find({
+      userId,
+      referenceMonth: selectedMonth,
+      expenseGroupId: { $in: expenseGroupIds },
+    }).lean<ExpenseGroupOverrideLean[]>(),
+    Expense.find({
+      userId,
       spentAt: {
-        gte: monthRange.start,
-        lt: monthRange.end,
+        $gte: monthRange.start,
+        $lt: monthRange.end,
       },
-    },
-    include: {
-      expenseGroup: {
-        include: {
-          overrides: {
-            where: { userId: user.id, referenceMonth: selectedMonth },
-            take: 1,
-          },
-        },
-      },
-    },
-    orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
-  });
+    })
+      .sort({ spentAt: -1, createdAt: -1 })
+      .lean<ExpenseLean[]>(),
+  ]);
+
+  const overrideByGroupId = new Map(
+    expenseGroupOverrides.map((override) => [override.expenseGroupId, override]),
+  );
+  const groupById = new Map(expenseGroups.map((group) => [group._id.toString(), group]));
+
   const groups = expenseGroups.map((group) => {
-    const override = group.overrides[0];
+    const groupId = group._id.toString();
+    const override = overrideByGroupId.get(groupId);
 
     return {
-      id: group.id,
+      id: groupId,
       referenceMonth: group.referenceMonth,
       name: override?.name ?? group.name,
       monthlyAmount: (override?.monthlyAmount ?? group.monthlyAmount).toString(),
@@ -109,24 +141,15 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     };
   });
   const activeGroupIds = new Set(groups.map((group) => group.id));
-  const commonExpenseSource = await prisma.expense.findMany({
-    where: {
-      userId: user.id,
-      expenseGroupId: { in: Array.from(activeGroupIds) },
-      creditCardPurchaseId: null,
-    },
-    select: {
-      title: true,
-      amount: true,
-      behaviorType: true,
-      coverageDays: true,
-      expenseGroupId: true,
-      spentAt: true,
-      createdAt: true,
-    },
-    orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
-    take: 200,
-  });
+  const commonExpenseSource = await Expense.find({
+    userId,
+    expenseGroupId: { $in: Array.from(activeGroupIds) },
+    creditCardPurchaseId: null,
+  })
+    .select("title amount behaviorType coverageDays expenseGroupId spentAt createdAt")
+    .sort({ spentAt: -1, createdAt: -1 })
+    .limit(200)
+    .lean<ExpenseLean[]>();
   const commonExpenseMap = new Map<
     string,
     {
@@ -186,18 +209,20 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       count: expense.count,
     }));
   const expenseItems = expenses.map((expense) => {
-    const groupOverride = expense.expenseGroup.overrides[0];
+    const expenseId = expense._id.toString();
+    const group = groupById.get(expense.expenseGroupId);
+    const groupOverride = overrideByGroupId.get(expense.expenseGroupId);
 
     return {
-      id: expense.id,
+      id: expenseId,
       spentAt: expense.spentAt.toISOString(),
       title: expense.title,
       amount: expense.amount.toString(),
       behaviorType: expense.behaviorType,
       coverageDays: expense.coverageDays,
       expenseGroupId: expense.expenseGroupId,
-      groupName: groupOverride?.name ?? expense.expenseGroup.name,
-      groupColor: groupOverride?.color ?? expense.expenseGroup.color,
+      groupName: groupOverride?.name ?? group?.name ?? "Grupo removido",
+      groupColor: groupOverride?.color ?? group?.color ?? "#18181b",
       creditCardPurchaseId: expense.creditCardPurchaseId,
       installmentNumber: expense.installmentNumber,
       installmentCount: expense.installmentCount,
@@ -225,9 +250,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         commonExpenses={commonExpenses}
         selectedMonth={selectedMonth}
         currency={financeProfile?.currency ?? "BRL"}
-        paydayStart={financeProfile?.paydayStart ?? null}
-        paydayEnd={financeProfile?.paydayEnd ?? null}
-        totalIncome={totalIncome}
       />
     </main>
   );

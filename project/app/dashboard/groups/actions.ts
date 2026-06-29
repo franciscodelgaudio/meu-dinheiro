@@ -1,8 +1,12 @@
 "use server";
 
 import { auth } from "@/auth";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
+import { ExpenseGroup } from "@/lib/models/expense-group";
+import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
+import { ExtraIncome } from "@/lib/models/extra-income";
+import { SavingsAllocation } from "@/lib/models/savings-allocation";
 import { revalidatePath } from "next/cache";
 
 export type ExpenseGroupActionState = {
@@ -16,7 +20,7 @@ export type SavingsAllocationActionState = ExpenseGroupActionState;
 type ExpenseGroupInput = {
   referenceMonth: string;
   name: string;
-  monthlyAmount: string;
+  monthlyAmount: number;
   affectsFutureMonths: boolean;
   repeatMonths: string | null;
   color: string;
@@ -27,14 +31,14 @@ type ExpenseGroupInput = {
 type ExtraIncomeInput = {
   referenceMonth: string;
   name: string;
-  amount: string;
+  amount: number;
   receivedDay: number | null;
   description: string | null;
 };
 
 type SavingsAllocationInput = {
   referenceMonth: string;
-  amount: string;
+  amount: number;
   affectsFutureMonths: boolean;
   repeatMonths: string | null;
   description: string | null;
@@ -42,58 +46,37 @@ type SavingsAllocationInput = {
 
 async function getCurrentUserId() {
   const session = await auth();
+  if (!session?.user?.email) return null;
 
-  if (!session?.user?.email) {
-    return null;
-  }
+  await dbConnect();
+  const user = await User.findOne({ email: session.user.email })
+    .select("_id")
+    .lean<{ _id: { toString(): string } }>();
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-
-  return user?.id ?? null;
+  return user ? user._id.toString() : null;
 }
 
 function parseExpenseGroupInput(formData: FormData): ExpenseGroupInput | string {
   const referenceMonth = String(formData.get("referenceMonth") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
-  const monthlyAmountText = String(formData.get("monthlyAmount") ?? "")
-    .trim()
-    .replace(",", ".");
+  const monthlyAmountText = String(formData.get("monthlyAmount") ?? "").trim().replace(",", ".");
   const monthlyAmount = Number(monthlyAmountText);
-  const affectsFutureMonths =
-    String(formData.get("affectsFutureMonths") ?? "") === "on";
+  const affectsFutureMonths = String(formData.get("affectsFutureMonths") ?? "") === "on";
   const color = String(formData.get("color") ?? "#18181b").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
   const priorityRaw = String(formData.get("priority") ?? "medium").trim();
   const priority = ["high", "medium", "low"].includes(priorityRaw) ? priorityRaw : "medium";
 
-  if (!/^\d{4}-\d{2}$/.test(referenceMonth)) {
-    return "Escolha um mes de referencia valido.";
-  }
-
-  if (name.length < 2) {
-    return "Informe um nome com pelo menos 2 caracteres.";
-  }
-
-  if (!monthlyAmountText || !Number.isFinite(monthlyAmount) || monthlyAmount < 0) {
-    return "Informe um valor mensal valido.";
-  }
-
-  if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
-    return "Escolha uma cor valida para o grupo.";
-  }
+  if (!/^\d{4}-\d{2}$/.test(referenceMonth)) return "Escolha um mes de referencia valido.";
+  if (name.length < 2) return "Informe um nome com pelo menos 2 caracteres.";
+  if (!monthlyAmountText || !Number.isFinite(monthlyAmount) || monthlyAmount < 0) return "Informe um valor mensal valido.";
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) return "Escolha uma cor valida para o grupo.";
 
   let repeatMonths: string | null = null;
   if (affectsFutureMonths) {
     const raw = formData.getAll("repeatMonth").map((v) => Number(String(v)));
-    const valid = [...new Set(raw.filter((n) => n >= 1 && n <= 12))].sort(
-      (a, b) => a - b,
-    );
-    if (valid.length === 0 || valid.length === 12) {
-      repeatMonths = null;
-    } else {
+    const valid = [...new Set(raw.filter((n) => n >= 1 && n <= 12))].sort((a, b) => a - b);
+    if (valid.length > 0 && valid.length < 12) {
       repeatMonths = valid.join(",");
     }
   }
@@ -101,7 +84,7 @@ function parseExpenseGroupInput(formData: FormData): ExpenseGroupInput | string 
   return {
     referenceMonth,
     name,
-    monthlyAmount: monthlyAmount.toFixed(2),
+    monthlyAmount: Number(monthlyAmount.toFixed(2)),
     affectsFutureMonths,
     repeatMonths,
     color,
@@ -113,26 +96,15 @@ function parseExpenseGroupInput(formData: FormData): ExpenseGroupInput | string 
 function parseExtraIncomeInput(formData: FormData): ExtraIncomeInput | string {
   const referenceMonth = String(formData.get("referenceMonth") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
-  const amountText = String(formData.get("amount") ?? "")
-    .trim()
-    .replace(",", ".");
+  const amountText = String(formData.get("amount") ?? "").trim().replace(",", ".");
   const amount = Number(amountText);
   const description = String(formData.get("description") ?? "").trim() || null;
   const receivedDayText = String(formData.get("receivedDay") ?? "").trim();
   const receivedDay = receivedDayText ? Number(receivedDayText) : null;
 
-  if (!/^\d{4}-\d{2}$/.test(referenceMonth)) {
-    return "Escolha um mes de referencia valido.";
-  }
-
-  if (name.length < 2) {
-    return "Informe um nome com pelo menos 2 caracteres.";
-  }
-
-  if (!amountText || !Number.isFinite(amount) || amount < 0) {
-    return "Informe um valor extra valido.";
-  }
-
+  if (!/^\d{4}-\d{2}$/.test(referenceMonth)) return "Escolha um mes de referencia valido.";
+  if (name.length < 2) return "Informe um nome com pelo menos 2 caracteres.";
+  if (!amountText || !Number.isFinite(amount) || amount < 0) return "Informe um valor extra valido.";
   if (receivedDay !== null && (!Number.isInteger(receivedDay) || receivedDay < 1 || receivedDay > 31)) {
     return "Informe um dia de recebimento valido (1-31).";
   }
@@ -140,38 +112,26 @@ function parseExtraIncomeInput(formData: FormData): ExtraIncomeInput | string {
   return {
     referenceMonth,
     name,
-    amount: amount.toFixed(2),
+    amount: Number(amount.toFixed(2)),
     receivedDay,
     description,
   };
 }
 
-function parseSavingsAllocationInput(
-  formData: FormData,
-): SavingsAllocationInput | string {
+function parseSavingsAllocationInput(formData: FormData): SavingsAllocationInput | string {
   const referenceMonth = String(formData.get("referenceMonth") ?? "").trim();
-  const amountText = String(formData.get("amount") ?? "")
-    .trim()
-    .replace(",", ".");
+  const amountText = String(formData.get("amount") ?? "").trim().replace(",", ".");
   const amount = Number(amountText);
   const description = String(formData.get("description") ?? "").trim() || null;
-  const affectsFutureMonths =
-    String(formData.get("affectsFutureMonths") ?? "") === "on";
+  const affectsFutureMonths = String(formData.get("affectsFutureMonths") ?? "") === "on";
 
-  if (!/^\d{4}-\d{2}$/.test(referenceMonth)) {
-    return "Escolha um mes de referencia valido.";
-  }
-
-  if (!amountText || !Number.isFinite(amount) || amount < 0) {
-    return "Informe um valor de poupanca valido.";
-  }
+  if (!/^\d{4}-\d{2}$/.test(referenceMonth)) return "Escolha um mes de referencia valido.";
+  if (!amountText || !Number.isFinite(amount) || amount < 0) return "Informe um valor de poupanca valido.";
 
   let repeatMonths: string | null = null;
   if (affectsFutureMonths) {
     const raw = formData.getAll("repeatMonth").map((v) => Number(String(v)));
-    const valid = [...new Set(raw.filter((n) => n >= 1 && n <= 12))].sort(
-      (a, b) => a - b,
-    );
+    const valid = [...new Set(raw.filter((n) => n >= 1 && n <= 12))].sort((a, b) => a - b);
     if (valid.length > 0 && valid.length < 12) {
       repeatMonths = valid.join(",");
     }
@@ -179,7 +139,7 @@ function parseSavingsAllocationInput(
 
   return {
     referenceMonth,
-    amount: amount.toFixed(2),
+    amount: Number(amount.toFixed(2)),
     affectsFutureMonths,
     repeatMonths,
     description,
@@ -191,34 +151,17 @@ export async function createExpenseGroup(
   formData: FormData,
 ): Promise<ExpenseGroupActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const input = parseExpenseGroupInput(formData);
+  if (typeof input === "string") return { status: "error", message: input };
 
-  if (typeof input === "string") {
-    return { status: "error", message: input };
-  }
-
-  await prisma.expenseGroup.create({
-    data: {
-      userId,
-      referenceMonth: input.referenceMonth,
-      name: input.name,
-      monthlyAmount: input.monthlyAmount,
-      affectsFutureMonths: input.affectsFutureMonths,
-      repeatMonths: input.repeatMonths,
-      color: input.color,
-      description: input.description,
-      priority: input.priority,
-    },
-  });
+  await ExpenseGroup.create({ userId, ...input });
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
   revalidatePath("/dashboard/expenses");
+
   return {
     status: "success",
     message: input.affectsFutureMonths
@@ -232,49 +175,34 @@ export async function updateExpenseGroup(
   formData: FormData,
 ): Promise<ExpenseGroupActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const id = String(formData.get("id") ?? "").trim();
   const input = parseExpenseGroupInput(formData);
 
-  if (!id) {
-    return { status: "error", message: "Grupo de despesa nao encontrado." };
-  }
+  if (!id) return { status: "error", message: "Grupo de despesa nao encontrado." };
+  if (typeof input === "string") return { status: "error", message: input };
 
-  if (typeof input === "string") {
-    return { status: "error", message: input };
-  }
+  await dbConnect();
+  const existingGroup = await ExpenseGroup.findOne({ _id: id, userId })
+    .select("_id referenceMonth")
+    .lean<{ _id: { toString(): string }; referenceMonth: string }>();
 
-  const existingGroup = await prisma.expenseGroup.findFirst({
-    where: { id, userId },
-    select: {
-      id: true,
-      referenceMonth: true,
-    },
-  });
-
-  if (!existingGroup) {
-    return { status: "error", message: "Grupo de despesa nao encontrado." };
-  }
+  if (!existingGroup) return { status: "error", message: "Grupo de despesa nao encontrado." };
 
   if (input.referenceMonth < existingGroup.referenceMonth) {
-    return {
-      status: "error",
-      message: "Este grupo ainda nao existe no mes selecionado.",
-    };
+    return { status: "error", message: "Este grupo ainda nao existe no mes selecionado." };
   }
 
   const scope = String(formData.get("scope") ?? "this-month").trim();
   const applyFromNow = scope === "from-this-month";
+  const groupId = existingGroup._id.toString();
 
   if (applyFromNow) {
-    await prisma.$transaction([
-      prisma.expenseGroup.update({
-        where: { id: existingGroup.id },
-        data: {
+    await ExpenseGroup.updateOne(
+      { _id: groupId },
+      {
+        $set: {
           name: input.name,
           monthlyAmount: input.monthlyAmount,
           repeatMonths: input.repeatMonths,
@@ -282,92 +210,73 @@ export async function updateExpenseGroup(
           description: input.description,
           priority: input.priority,
         },
-      }),
-      prisma.expenseGroupOverride.deleteMany({
-        where: {
-          expenseGroupId: existingGroup.id,
-          userId,
-          referenceMonth: { gte: input.referenceMonth },
-        },
-      }),
-    ]);
+      },
+    );
+    await ExpenseGroupOverride.deleteMany({
+      expenseGroupId: groupId,
+      userId,
+      referenceMonth: { $gte: input.referenceMonth },
+    });
   } else {
-    await prisma.$transaction([
-      prisma.expenseGroup.update({
-        where: { id: existingGroup.id },
-        data: { priority: input.priority },
-      }),
-      prisma.expenseGroupOverride.upsert({
-        where: {
-          expenseGroupId_referenceMonth: {
-            expenseGroupId: existingGroup.id,
-            referenceMonth: input.referenceMonth,
-          },
-        },
-        create: {
+    await ExpenseGroup.updateOne({ _id: groupId }, { $set: { priority: input.priority } });
+    await ExpenseGroupOverride.findOneAndUpdate(
+      { expenseGroupId: groupId, referenceMonth: input.referenceMonth },
+      {
+        $set: {
           userId,
-          expenseGroupId: existingGroup.id,
-          referenceMonth: input.referenceMonth,
           name: input.name,
           monthlyAmount: input.monthlyAmount,
           color: input.color,
           description: input.description,
         },
-        update: {
-          name: input.name,
-          monthlyAmount: input.monthlyAmount,
-          color: input.color,
-          description: input.description,
-        },
-      }),
-    ]);
+        $setOnInsert: { expenseGroupId: groupId, referenceMonth: input.referenceMonth },
+      },
+      { upsert: true, new: true },
+    );
   }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
   revalidatePath("/dashboard/expenses");
+
   return {
     status: "success",
-    message: applyFromNow
-      ? "Grupo atualizado a partir deste mes."
-      : "Grupo atualizado apenas neste mes.",
+    message: applyFromNow ? "Grupo atualizado a partir deste mes." : "Grupo atualizado apenas neste mes.",
   };
 }
 
-export async function deleteExpenseGroup(
-  id: string,
-): Promise<ExpenseGroupActionState> {
+export async function deleteExpenseGroup(id: string): Promise<ExpenseGroupActionState> {
   const userId = await getCurrentUserId();
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
+  await dbConnect();
+
+  const { Expense } = await import("@/lib/models/expense");
+  const { CreditCardPurchase } = await import("@/lib/models/credit-card-purchase");
+
+  const hasExpenses = await Expense.countDocuments({ expenseGroupId: id, userId });
+  if (hasExpenses > 0) {
+    return {
+      status: "error",
+      message: "Nao e possivel remover um grupo que possui despesas registradas.",
+    };
   }
 
-  let result;
-  try {
-    result = await prisma.expenseGroup.deleteMany({
-      where: { id, userId },
-    });
-  } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2003"
-    ) {
-      return {
-        status: "error",
-        message:
-          "Nao e possivel remover um grupo que possui despesas registradas.",
-      };
-    }
-    return { status: "error", message: "Nao foi possivel remover o grupo." };
+  const hasPurchases = await CreditCardPurchase.countDocuments({ expenseGroupId: id, userId });
+  if (hasPurchases > 0) {
+    return {
+      status: "error",
+      message: "Nao e possivel remover um grupo que possui despesas registradas.",
+    };
   }
 
-  if (result.count === 0) {
-    return { status: "error", message: "Grupo de despesa nao encontrado." };
-  }
+  const result = await ExpenseGroup.deleteOne({ _id: id, userId });
+
+  if (result.deletedCount === 0) return { status: "error", message: "Grupo de despesa nao encontrado." };
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
+
   return { status: "success", message: "Grupo de despesa removido." };
 }
 
@@ -376,26 +285,16 @@ export async function createExtraIncome(
   formData: FormData,
 ): Promise<ExtraIncomeActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const input = parseExtraIncomeInput(formData);
+  if (typeof input === "string") return { status: "error", message: input };
 
-  if (typeof input === "string") {
-    return { status: "error", message: input };
-  }
-
-  await prisma.extraIncome.create({
-    data: {
-      userId,
-      ...input,
-    },
-  });
+  await ExtraIncome.create({ userId, ...input });
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
+
   return { status: "success", message: "Renda extra criada." };
 }
 
@@ -404,55 +303,37 @@ export async function updateExtraIncome(
   formData: FormData,
 ): Promise<ExtraIncomeActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const id = String(formData.get("id") ?? "").trim();
   const input = parseExtraIncomeInput(formData);
 
-  if (!id) {
-    return { status: "error", message: "Renda extra nao encontrada." };
-  }
+  if (!id) return { status: "error", message: "Renda extra nao encontrada." };
+  if (typeof input === "string") return { status: "error", message: input };
 
-  if (typeof input === "string") {
-    return { status: "error", message: input };
-  }
+  await dbConnect();
+  const result = await ExtraIncome.updateOne({ _id: id, userId }, { $set: input });
 
-  const result = await prisma.extraIncome.updateMany({
-    where: { id, userId },
-    data: input,
-  });
-
-  if (result.count === 0) {
-    return { status: "error", message: "Renda extra nao encontrada." };
-  }
+  if (result.matchedCount === 0) return { status: "error", message: "Renda extra nao encontrada." };
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
+
   return { status: "success", message: "Renda extra atualizada." };
 }
 
-export async function deleteExtraIncome(
-  id: string,
-): Promise<ExtraIncomeActionState> {
+export async function deleteExtraIncome(id: string): Promise<ExtraIncomeActionState> {
   const userId = await getCurrentUserId();
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  await dbConnect();
+  const result = await ExtraIncome.deleteOne({ _id: id, userId });
 
-  const result = await prisma.extraIncome.deleteMany({
-    where: { id, userId },
-  });
-
-  if (result.count === 0) {
-    return { status: "error", message: "Renda extra nao encontrada." };
-  }
+  if (result.deletedCount === 0) return { status: "error", message: "Renda extra nao encontrada." };
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
+
   return { status: "success", message: "Renda extra removida." };
 }
 
@@ -461,63 +342,43 @@ export async function saveSavingsAllocation(
   formData: FormData,
 ): Promise<SavingsAllocationActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const input = parseSavingsAllocationInput(formData);
+  if (typeof input === "string") return { status: "error", message: input };
 
-  if (typeof input === "string") {
-    return { status: "error", message: input };
-  }
-
-  await prisma.savingsAllocation.upsert({
-    where: {
-      userId_referenceMonth: {
-        userId,
-        referenceMonth: input.referenceMonth,
+  await dbConnect();
+  await SavingsAllocation.findOneAndUpdate(
+    { userId, referenceMonth: input.referenceMonth },
+    {
+      $set: {
+        amount: input.amount,
+        affectsFutureMonths: input.affectsFutureMonths,
+        repeatMonths: input.repeatMonths,
+        description: input.description,
       },
+      $setOnInsert: { userId, referenceMonth: input.referenceMonth },
     },
-    create: {
-      userId,
-      referenceMonth: input.referenceMonth,
-      amount: input.amount,
-      affectsFutureMonths: input.affectsFutureMonths,
-      repeatMonths: input.repeatMonths,
-      description: input.description,
-    },
-    update: {
-      amount: input.amount,
-      affectsFutureMonths: input.affectsFutureMonths,
-      repeatMonths: input.repeatMonths,
-      description: input.description,
-    },
-  });
+    { upsert: true, new: true },
+  );
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
+
   return { status: "success", message: "Poupanca do mes atualizada." };
 }
 
-export async function deleteSavingsAllocation(
-  id: string,
-): Promise<SavingsAllocationActionState> {
+export async function deleteSavingsAllocation(id: string): Promise<SavingsAllocationActionState> {
   const userId = await getCurrentUserId();
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  await dbConnect();
+  const result = await SavingsAllocation.deleteOne({ _id: id, userId });
 
-  const result = await prisma.savingsAllocation.deleteMany({
-    where: { id, userId },
-  });
-
-  if (result.count === 0) {
-    return { status: "error", message: "Poupanca nao encontrada." };
-  }
+  if (result.deletedCount === 0) return { status: "error", message: "Poupanca nao encontrada." };
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
+
   return { status: "success", message: "Poupanca removida." };
 }

@@ -6,7 +6,9 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { prisma } from "@/lib/prisma";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
+import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 
 import { AppSidebar } from "./app-sidebar";
 import { AiChat } from "./ai-chat";
@@ -22,23 +24,28 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: {
-      name: true,
-      email: true,
-      image: true,
-      financeProfile: { select: { id: true } },
-    },
-  });
+  await dbConnect();
+  const dbUser = await User.findOne({ email: session.user.email })
+    .select("_id name email image")
+    .lean<{ _id: { toString(): string }; name: string | null; email: string | null; image: string | null }>();
 
-  if (!user) {
+  if (!dbUser) {
     redirect("/login");
   }
 
-  if (!user.financeProfile) {
+  const financeProfile = await UserFinanceProfile.findOne({ userId: dbUser._id.toString() })
+    .select("_id")
+    .lean();
+
+  if (!financeProfile) {
     redirect("/first-access");
   }
+
+  const user = {
+    name: dbUser.name,
+    email: dbUser.email,
+    image: dbUser.image,
+  };
 
   return (
     <SidebarProvider>

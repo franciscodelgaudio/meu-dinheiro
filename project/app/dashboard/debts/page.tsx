@@ -1,14 +1,17 @@
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
+import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
+import { CreditCardPurchase } from "@/lib/models/credit-card-purchase";
+import { Expense } from "@/lib/models/expense";
+import { IncomeReceipt } from "@/lib/models/income-receipt";
 import { redirect } from "next/navigation";
 
 import { DebtsManager } from "./debts-manager";
 import { getCalendarMonth, getEffectiveCurrentMonth } from "@/lib/date-utils";
 
 type DebtsPageProps = {
-  searchParams?: Promise<{
-    month?: string | string[];
-  }>;
+  searchParams?: Promise<{ month?: string | string[] }>;
 };
 
 function normalizeReferenceMonth(
@@ -24,7 +27,6 @@ function normalizeReferenceMonth(
 function getMonthDistance(startMonth: string, endMonth: string) {
   const [startYear, startMonthNumber] = startMonth.split("-").map(Number);
   const [endYear, endMonthNumber] = endMonth.split("-").map(Number);
-
   return (endYear - startYear) * 12 + (endMonthNumber - startMonthNumber);
 }
 
@@ -32,10 +34,8 @@ function getInstallmentAmounts(totalAmount: number, installmentCount: number) {
   const totalInCents = Math.round(totalAmount * 100);
   const baseInCents = Math.floor(totalInCents / installmentCount);
   const remainder = totalInCents % installmentCount;
-
   return Array.from({ length: installmentCount }, (_, index) => {
     const cents = baseInCents + (index < remainder ? 1 : 0);
-
     return cents / 100;
   });
 }
@@ -44,27 +44,23 @@ export default async function DebtsPage({ searchParams }: DebtsPageProps) {
   const params = await searchParams;
   const session = await auth();
 
-  if (!session?.user?.email) {
-    redirect("/login");
-  }
+  if (!session?.user?.email) redirect("/login");
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
+  await dbConnect();
+  const user = await User.findOne({ email: session.user.email })
+    .select("_id")
+    .lean<{ _id: { toString(): string } }>();
 
-  if (!user) {
-    redirect("/login");
-  }
+  if (!user) redirect("/login");
+
+  const userId = user._id.toString();
+  const calendarMonth = getCalendarMonth();
 
   const [financeProfile, incomeReceipt] = await Promise.all([
-    prisma.userFinanceProfile.findUnique({
-      where: { userId: user.id },
-      select: { currency: true, paydayStart: true },
-    }),
-    prisma.incomeReceipt.findUnique({
-      where: { userId_referenceMonth: { userId: user.id, referenceMonth: getCalendarMonth() } },
-    }),
+    UserFinanceProfile.findOne({ userId })
+      .select("currency paydayStart")
+      .lean<{ currency: string; paydayStart: number | null }>(),
+    IncomeReceipt.findOne({ userId, referenceMonth: calendarMonth }).lean(),
   ]);
 
   const selectedMonth = normalizeReferenceMonth(
@@ -74,65 +70,58 @@ export default async function DebtsPage({ searchParams }: DebtsPageProps) {
   );
 
   const [commitments, paidExpenses] = await Promise.all([
-    prisma.creditCardPurchase.findMany({
-      where: {
-        userId: user.id,
-        kind: { in: ["debt", "credit_card"] },
-        firstInstallmentMonth: { lte: selectedMonth },
-      },
-      orderBy: [{ kind: "asc" }, { firstInstallmentMonth: "asc" }, { createdAt: "desc" }],
-    }),
-    prisma.expense.findMany({
-      where: {
-        userId: user.id,
-        creditCardPurchaseId: { not: null },
-      },
-      select: {
-        id: true,
-        creditCardPurchaseId: true,
-        installmentNumber: true,
-      },
-    }),
+    CreditCardPurchase.find({
+      userId,
+      kind: { $in: ["debt", "credit_card"] },
+      firstInstallmentMonth: { $lte: selectedMonth },
+    })
+      .sort({ kind: 1, firstInstallmentMonth: 1, createdAt: -1 })
+      .lean<{
+        _id: { toString(): string };
+        kind: string;
+        title: string;
+        source: string;
+        purchasedAt: Date;
+        firstInstallmentMonth: string;
+        totalAmount: number;
+        installmentCount: number;
+        description: string | null;
+        paymentDay: number | null;
+      }[]>(),
+    Expense.find({
+      userId,
+      creditCardPurchaseId: { $ne: null },
+    })
+      .select("_id creditCardPurchaseId installmentNumber")
+      .lean<{ _id: { toString(): string }; creditCardPurchaseId: string; installmentNumber: number | null }[]>(),
   ]);
 
   const paidMap = new Map(
     paidExpenses
       .filter((e) => e.creditCardPurchaseId != null && e.installmentNumber != null)
-      .map((e) => [`${e.creditCardPurchaseId}-${e.installmentNumber}`, e.id]),
+      .map((e) => [`${e.creditCardPurchaseId}-${e.installmentNumber}`, e._id.toString()]),
   );
 
   const debtItems = commitments
     .map((commitment) => {
-      const selectedInstallmentIndex = getMonthDistance(
-        commitment.firstInstallmentMonth,
-        selectedMonth,
-      );
+      const commitmentId = commitment._id.toString();
+      const selectedInstallmentIndex = getMonthDistance(commitment.firstInstallmentMonth, selectedMonth);
 
-      if (
-        selectedInstallmentIndex < 0 ||
-        selectedInstallmentIndex >= commitment.installmentCount
-      ) {
+      if (selectedInstallmentIndex < 0 || selectedInstallmentIndex >= commitment.installmentCount) {
         return null;
       }
 
-      const installmentAmounts = getInstallmentAmounts(
-        Number(commitment.totalAmount),
-        commitment.installmentCount,
-      );
+      const installmentAmounts = getInstallmentAmounts(Number(commitment.totalAmount), commitment.installmentCount);
       const installmentNumber = selectedInstallmentIndex + 1;
-      const paidBeforeMonth = installmentAmounts
-        .slice(0, selectedInstallmentIndex)
-        .reduce((total, amount) => total + amount, 0);
+      const paidBeforeMonth = installmentAmounts.slice(0, selectedInstallmentIndex).reduce((t, a) => t + a, 0);
       const installmentAmount = installmentAmounts[selectedInstallmentIndex] ?? 0;
-      const remainingAfterMonth = installmentAmounts
-        .slice(selectedInstallmentIndex + 1)
-        .reduce((total, amount) => total + amount, 0);
+      const remainingAfterMonth = installmentAmounts.slice(selectedInstallmentIndex + 1).reduce((t, a) => t + a, 0);
 
-      const payKey = `${commitment.id}-${installmentNumber}`;
+      const payKey = `${commitmentId}-${installmentNumber}`;
       const paymentExpenseId = paidMap.get(payKey) ?? null;
 
       return {
-        id: commitment.id,
+        id: commitmentId,
         kind: commitment.kind,
         name: commitment.title,
         source: commitment.source,

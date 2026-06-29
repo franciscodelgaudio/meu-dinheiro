@@ -1,7 +1,9 @@
 "use server";
 
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
+import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 import { revalidatePath } from "next/cache";
 
 export type FinanceActionState = {
@@ -10,7 +12,7 @@ export type FinanceActionState = {
 };
 
 type FinanceInput = {
-  monthlyIncome: string;
+  monthlyIncome: number;
   currency: string;
   paydayStart: number | null;
   paydayEnd: number | null;
@@ -19,26 +21,19 @@ type FinanceInput = {
 
 async function getCurrentUserId() {
   const session = await auth();
+  if (!session?.user?.email) return null;
 
-  if (!session?.user?.email) {
-    return null;
-  }
+  await dbConnect();
+  const user = await User.findOne({ email: session.user.email })
+    .select("_id")
+    .lean<{ _id: { toString(): string } }>();
 
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  });
-
-  return user?.id ?? null;
+  return user ? user._id.toString() : null;
 }
 
 function parseOptionalInt(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
-
-  if (!text) {
-    return null;
-  }
-
+  if (!text) return null;
   const parsed = Number.parseInt(text, 10);
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
@@ -48,16 +43,11 @@ function isValidDay(value: number | null) {
 }
 
 function normalizeCurrency(value: FormDataEntryValue | null) {
-  return String(value ?? "BRL")
-    .trim()
-    .toUpperCase()
-    .slice(0, 3);
+  return String(value ?? "BRL").trim().toUpperCase().slice(0, 3);
 }
 
 function parseFinanceInput(formData: FormData): FinanceInput | string {
-  const monthlyIncomeText = String(formData.get("monthlyIncome") ?? "")
-    .trim()
-    .replace(",", ".");
+  const monthlyIncomeText = String(formData.get("monthlyIncome") ?? "").trim().replace(",", ".");
   const monthlyIncome = Number(monthlyIncomeText);
   const currency = normalizeCurrency(formData.get("currency"));
   const paydayStart = parseOptionalInt(formData.get("paydayStart"));
@@ -67,25 +57,17 @@ function parseFinanceInput(formData: FormData): FinanceInput | string {
   if (!monthlyIncomeText || !Number.isFinite(monthlyIncome) || monthlyIncome < 0) {
     return "Informe uma renda mensal valida.";
   }
-
-  if (currency.length !== 3) {
-    return "Informe uma moeda com 3 letras, como BRL ou USD.";
-  }
-
-  if (!isValidDay(paydayStart) || !isValidDay(paydayEnd)) {
-    return "Os dias precisam ficar entre 1 e 31.";
-  }
-
+  if (currency.length !== 3) return "Informe uma moeda com 3 letras, como BRL ou USD.";
+  if (!isValidDay(paydayStart) || !isValidDay(paydayEnd)) return "Os dias precisam ficar entre 1 e 31.";
   if ((paydayStart === null) !== (paydayEnd === null)) {
     return "Informe o inicio e o fim do intervalo de recebimento.";
   }
-
   if (paydayStart !== null && paydayEnd !== null && paydayStart > paydayEnd) {
     return "O inicio do recebimento nao pode ser maior que o fim.";
   }
 
   return {
-    monthlyIncome: monthlyIncome.toFixed(2),
+    monthlyIncome: Number(monthlyIncome.toFixed(2)),
     currency,
     paydayStart,
     paydayEnd,
@@ -98,35 +80,19 @@ export async function createFinanceProfile(
   formData: FormData,
 ): Promise<FinanceActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const input = parseFinanceInput(formData);
+  if (typeof input === "string") return { status: "error", message: input };
 
-  if (typeof input === "string") {
-    return { status: "error", message: input };
-  }
+  const existingProfile = await UserFinanceProfile.findOne({ userId }).select("_id").lean();
+  if (existingProfile) return { status: "error", message: "Voce ja tem um perfil financeiro." };
 
-  const existingProfile = await prisma.userFinanceProfile.findUnique({
-    where: { userId },
-    select: { id: true },
-  });
-
-  if (existingProfile) {
-    return { status: "error", message: "Voce ja tem um perfil financeiro." };
-  }
-
-  await prisma.userFinanceProfile.create({
-    data: {
-      userId,
-      ...input,
-    },
-  });
+  await UserFinanceProfile.create({ userId, ...input });
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/profile");
+
   return { status: "success", message: "Perfil financeiro criado." };
 }
 
@@ -135,47 +101,31 @@ export async function updateFinanceProfile(
   formData: FormData,
 ): Promise<FinanceActionState> {
   const userId = await getCurrentUserId();
-
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const input = parseFinanceInput(formData);
+  if (typeof input === "string") return { status: "error", message: input };
 
-  if (typeof input === "string") {
-    return { status: "error", message: input };
-  }
+  const result = await UserFinanceProfile.updateOne({ userId }, { $set: input });
 
-  const result = await prisma.userFinanceProfile.updateMany({
-    where: { userId },
-    data: input,
-  });
-
-  if (result.count === 0) {
-    return { status: "error", message: "Crie o perfil antes de atualizar." };
-  }
+  if (result.matchedCount === 0) return { status: "error", message: "Crie o perfil antes de atualizar." };
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/profile");
+
   return { status: "success", message: "Perfil financeiro atualizado." };
 }
 
 export async function deleteFinanceProfile(): Promise<FinanceActionState> {
   const userId = await getCurrentUserId();
+  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
-  if (!userId) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  const result = await UserFinanceProfile.deleteOne({ userId });
 
-  const result = await prisma.userFinanceProfile.deleteMany({
-    where: { userId },
-  });
-
-  if (result.count === 0) {
-    return { status: "error", message: "Nenhum perfil financeiro encontrado." };
-  }
+  if (result.deletedCount === 0) return { status: "error", message: "Nenhum perfil financeiro encontrado." };
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/profile");
+
   return { status: "success", message: "Perfil financeiro removido." };
 }

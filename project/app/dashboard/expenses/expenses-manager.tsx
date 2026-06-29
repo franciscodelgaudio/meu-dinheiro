@@ -47,7 +47,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -55,7 +54,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -112,9 +110,6 @@ type ExpensesManagerProps = {
   commonExpenses: CommonExpenseTemplate[];
   selectedMonth: string;
   currency: string;
-  paydayStart: number | null;
-  paydayEnd: number | null;
-  totalIncome: number;
 };
 
 
@@ -169,75 +164,6 @@ function getPercentage(value: number, total: number) {
   return (value / total) * 100;
 }
 
-function getReferenceDate(selectedMonth: string) {
-  const today = new Date();
-  const currentMonth = `${today.getFullYear()}-${String(
-    today.getMonth() + 1,
-  ).padStart(2, "0")}`;
-
-  if (selectedMonth === currentMonth) {
-    return new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-  }
-
-  const [year, month] = selectedMonth.split("-").map(Number);
-
-  return new Date(Date.UTC(year, month - 1, 1));
-}
-
-function getDaysUntilNextPayday(
-  selectedMonth: string,
-  paydayStart: number | null,
-) {
-  const referenceDate = getReferenceDate(selectedMonth);
-  const payday =
-    paydayStart ??
-    new Date(
-      Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 0),
-    ).getUTCDate();
-  const currentMonthLastDay = new Date(
-    Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  let nextPayday = new Date(
-    Date.UTC(
-      referenceDate.getUTCFullYear(),
-      referenceDate.getUTCMonth(),
-      Math.min(payday, currentMonthLastDay),
-    ),
-  );
-
-  if (nextPayday <= referenceDate) {
-    const nextMonthLastDay = new Date(
-      Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 2, 0),
-    ).getUTCDate();
-
-    nextPayday = new Date(
-      Date.UTC(
-        referenceDate.getUTCFullYear(),
-        referenceDate.getUTCMonth() + 1,
-        Math.min(payday, nextMonthLastDay),
-      ),
-    );
-  }
-
-  const dayMs = 24 * 60 * 60 * 1000;
-
-  return Math.max(
-    1,
-    Math.ceil((nextPayday.getTime() - referenceDate.getTime()) / dayMs),
-  );
-}
-
-function getPaydayLabel(paydayStart: number | null, paydayEnd: number | null) {
-  if (paydayStart === null || paydayEnd === null) {
-    return "fim do ciclo";
-  }
-
-  if (paydayStart === paydayEnd) {
-    return `dia ${paydayStart}`;
-  }
-
-  return `dias ${paydayStart} a ${paydayEnd}`;
-}
 
 
 function MonthSelector({ selectedMonth }: { selectedMonth: string }) {
@@ -286,8 +212,8 @@ function QuickExpenseCapture({
     }
 
     if (state.status === "success" && state.suggestion) {
-      setSelectedImages([]);
       window.setTimeout(() => {
+        setSelectedImages([]);
         setPreviewOpen(true);
       }, 0);
       toast.success(state.message);
@@ -944,30 +870,13 @@ export function ExpensesManager({
   commonExpenses,
   selectedMonth,
   currency,
-  paydayStart,
-  paydayEnd,
-  totalIncome,
 }: ExpensesManagerProps) {
-  const daysRemaining = getDaysUntilNextPayday(selectedMonth, paydayStart);
-  const paydayLabel = getPaydayLabel(paydayStart, paydayEnd);
-  const totalPlanned = useMemo(
-    () => groupTotals.reduce((total, group) => total + Number(group.monthlyAmount), 0),
-    [groupTotals],
-  );
-  const totalSpent = useMemo(
-    () => expenses.reduce((total, expense) => total + Number(expense.amount), 0),
-    [expenses],
-  );
-  const remaining = totalPlanned - totalSpent;
-  const totalRemaining = totalIncome - totalSpent;
-  const spentPercentage = getPercentage(totalSpent, totalPlanned);
-  const sustainableDaily = totalRemaining > 0 ? totalRemaining / daysRemaining : 0;
 
   return (
     <div className="grid gap-4 sm:gap-6">
       <QuickExpenseCapture groups={groups} selectedMonth={selectedMonth} />
 
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-4 sm:gap-6">
         <Card>
           <CardHeader className="gap-0 pb-0">
             <div className="flex items-start justify-between gap-3 pb-3">
@@ -1096,92 +1005,6 @@ export function ExpensesManager({
                 </div>
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        <Card className="self-start">
-          <CardHeader>
-            <CardTitle>Resumo do mes</CardTitle>
-            <CardDescription className="capitalize">
-              {formatReferenceMonth(selectedMonth)}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <div className="grid gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-muted-foreground">
-                  Planejado em grupos
-                </span>
-                <span className="font-medium">
-                  {formatMoney(totalPlanned, currency)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-muted-foreground">
-                  Gasto registrado
-                </span>
-                <span className="font-medium text-red-700">
-                  {formatMoney(totalSpent, currency)}
-                </span>
-              </div>
-            </div>
-            <Separator />
-            <div className="grid gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-muted-foreground">Ate receber</span>
-                <span className="font-medium">{daysRemaining} dia(s)</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-muted-foreground">
-                  Ritmo sustentavel
-                </span>
-                <span className="font-medium">
-                  {formatMoney(sustainableDaily, currency)}/dia
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Calculado ate o proximo recebimento em {paydayLabel}.
-              </p>
-            </div>
-            <Separator />
-            <div className="grid gap-3">
-              <Progress value={Math.min(spentPercentage, 100)} />
-              <p className="text-sm text-muted-foreground">
-                {new Intl.NumberFormat("pt-BR", {
-                  maximumFractionDigits: 1,
-                }).format(spentPercentage)}
-                % do planejado ja foi usado.
-              </p>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground">
-                Restante planejado
-              </span>
-              <span
-                className={
-                  remaining >= 0
-                    ? "font-semibold text-emerald-700"
-                    : "font-semibold text-red-700"
-                }
-              >
-                {formatMoney(remaining, currency)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground">
-                Restante real
-              </span>
-              <span
-                className={
-                  totalRemaining >= 0
-                    ? "font-semibold text-emerald-700"
-                    : "font-semibold text-red-700"
-                }
-              >
-                {formatMoney(totalRemaining, currency)}
-              </span>
-            </div>
           </CardContent>
         </Card>
       </div>

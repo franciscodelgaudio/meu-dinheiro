@@ -8,7 +8,6 @@ Aplicação web de controle financeiro pessoal com dashboard mensal, organizaç�
 
 ```bash
 npm install
-npm run db:push
 npm run dev
 ```
 
@@ -19,7 +18,7 @@ Acesse `http://localhost:3000`.
 Crie um arquivo `.env.local`:
 
 ```env
-DATABASE_URL="postgresql://usuario:senha@localhost:5432/meudinheiro"
+MONGODB_URI="mongodb+srv://usuario:senha@cluster/meudinheiro"
 AUTH_SECRET="sua_chave_secreta"
 AUTH_GOOGLE_ID="seu_google_client_id"
 AUTH_GOOGLE_SECRET="seu_google_client_secret"
@@ -33,8 +32,4 @@ npm run dev
 npm run build
 npm run start
 npm run lint
-npm run db:generate
-npm run db:push
-npm run db:seed
 ```
-

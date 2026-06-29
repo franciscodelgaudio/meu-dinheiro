@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 
 import { auth, unstable_update as updateSession } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
 
 export type ProfileActionState = {
   status?: "success" | "error";
@@ -20,11 +21,7 @@ function normalizeEmail(value: FormDataEntryValue | null) {
 
 function normalizeImage(value: FormDataEntryValue | null) {
   const image = normalizeText(value);
-
-  if (!image) {
-    return null;
-  }
-
+  if (!image) return null;
   try {
     const url = new URL(image);
     return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
@@ -39,20 +36,12 @@ function isValidEmail(email: string) {
 
 async function getCurrentUser() {
   const session = await auth();
+  if (!session?.user?.email) return null;
 
-  if (!session?.user?.email) {
-    return null;
-  }
-
-  return prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      image: true,
-    },
-  });
+  await dbConnect();
+  return User.findOne({ email: session.user.email })
+    .select("_id name email image")
+    .lean<{ _id: { toString(): string }; name: string | null; email: string | null; image: string | null }>();
 }
 
 export async function updateProfile(
@@ -60,51 +49,32 @@ export async function updateProfile(
   formData: FormData,
 ): Promise<ProfileActionState> {
   const user = await getCurrentUser();
-
-  if (!user) {
-    return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-  }
+  if (!user) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const name = normalizeText(formData.get("name")) || null;
   const email = normalizeEmail(formData.get("email"));
   const image = normalizeImage(formData.get("image"));
 
-  if (name && name.length > 80) {
-    return { status: "error", message: "O nome pode ter no maximo 80 caracteres." };
-  }
+  if (name && name.length > 80) return { status: "error", message: "O nome pode ter no maximo 80 caracteres." };
+  if (!isValidEmail(email)) return { status: "error", message: "Informe um email valido." };
+  if (image === "") return { status: "error", message: "Informe uma URL de avatar http ou https." };
 
-  if (!isValidEmail(email)) {
-    return { status: "error", message: "Informe um email valido." };
-  }
-
-  if (image === "") {
-    return { status: "error", message: "Informe uma URL de avatar http ou https." };
-  }
+  const userId = user._id.toString();
 
   if (email !== user.email) {
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-
-    if (existingUser && existingUser.id !== user.id) {
+    const existingUser = await User.findOne({ email }).select("_id").lean<{ _id: { toString(): string } }>();
+    if (existingUser && existingUser._id.toString() !== userId) {
       return { status: "error", message: "Este email ja esta em uso." };
     }
   }
 
-  const updatedUser = await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      name,
-      email,
-      image,
-    },
-    select: {
-      name: true,
-      email: true,
-      image: true,
-    },
-  });
+  const updatedUser = await User.findOneAndUpdate(
+    { _id: userId },
+    { $set: { name, email, image } },
+    { new: true, select: "name email image" },
+  ).lean<{ name: string | null; email: string | null; image: string | null }>();
+
+  if (!updatedUser) return { status: "error", message: "Nao foi possivel atualizar o perfil." };
 
   await updateSession({
     user: {

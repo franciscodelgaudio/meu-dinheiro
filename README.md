@@ -29,8 +29,8 @@ Além do controle manual, o app usa IA para analisar o cenário financeiro do us
 - Next.js 16
 - React 19
 - TypeScript
-- Prisma
-- PostgreSQL
+- MongoDB
+- Mongoose
 - NextAuth
 - Tailwind CSS
 - Radix UI
@@ -40,15 +40,14 @@ Além do controle manual, o app usa IA para analisar o cenário financeiro do us
 
 ```txt
 MeuDinheiro/
-├── README.md
-└── project/
-    ├── app/
-    ├── components/
-    ├── hooks/
-    ├── lib/
-    ├── prisma/
-    ├── package.json
-    └── prisma.config.ts
+|-- README.md
+`-- project/
+    |-- app/
+    |-- components/
+    |-- hooks/
+    |-- lib/
+    |-- package.json
+    `-- README.md
 ```
 
 ## Como rodar localmente
@@ -68,23 +67,11 @@ npm install
 Crie um arquivo `.env.local` com as variáveis necessárias:
 
 ```env
-DATABASE_URL="postgresql://usuario:senha@localhost:5432/meudinheiro"
+MONGODB_URI="mongodb+srv://usuario:senha@cluster/meudinheiro"
 AUTH_SECRET="sua_chave_secreta"
 AUTH_GOOGLE_ID="seu_google_client_id"
 AUTH_GOOGLE_SECRET="seu_google_client_secret"
 GEMINI_API_KEY="sua_chave_do_gemini"
-```
-
-Sincronize o banco com o schema do Prisma:
-
-```bash
-npm run db:push
-```
-
-Opcionalmente, rode o seed:
-
-```bash
-npm run db:seed
 ```
 
 Inicie o servidor de desenvolvimento:
@@ -103,17 +90,14 @@ http://localhost:3000
 
 ```bash
 npm run dev          # inicia o servidor local
-npm run build        # gera o Prisma Client e faz o build do Next.js
+npm run build        # faz o build do Next.js
 npm run start        # inicia a aplicação em produção
 npm run lint         # executa o ESLint
-npm run db:generate  # gera o Prisma Client
-npm run db:push      # aplica o schema no banco
-npm run db:seed      # popula dados iniciais
 ```
 
 ## Banco de dados
 
-O schema Prisma inclui modelos para:
+Os modelos Mongoose incluem colecoes para:
 
 - Usuários e autenticação.
 - Perfil financeiro.
@@ -136,4 +120,3 @@ Caso a chave não esteja configurada, o app continua funcionando, mas exibirá u
 ## Status
 
 Projeto em desenvolvimento.
-

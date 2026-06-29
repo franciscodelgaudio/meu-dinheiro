@@ -1,10 +1,12 @@
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import { prisma } from "@/lib/prisma";
+import { MongoDBAdapter } from "@auth/mongodb-adapter";
+import clientPromise from "@/lib/mongodb";
+import { dbConnect } from "@/lib/mongoose";
+import { User } from "@/lib/models/user";
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
 export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: MongoDBAdapter(clientPromise),
   pages: {
     signIn: "/login",
   },
@@ -18,10 +20,8 @@ export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
         const name = typeof profile.name === "string" ? profile.name : null;
         const image = typeof profile.picture === "string" ? profile.picture : null;
 
-        await prisma.user.updateMany({
-          where: { email: user.email },
-          data: { name, image },
-        });
+        await dbConnect();
+        await User.updateOne({ email: user.email }, { $set: { name, image } });
 
         user.name = name;
         user.image = image;
