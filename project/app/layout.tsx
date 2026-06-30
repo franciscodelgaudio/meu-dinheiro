@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "@/components/ui/sonner";
+import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -29,6 +30,7 @@ export default function RootLayout({
         {children}
         <Toaster richColors position="top-right" />
         <Analytics />
+        <PwaRegister />
       </body>
     </html>
   );

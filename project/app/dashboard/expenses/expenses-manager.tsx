@@ -4,6 +4,7 @@ import { startTransition, useActionState, useEffect, useMemo, useRef, useState, 
 import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarIcon,
+  Camera,
   Check,
   ChevronsUpDown,
   ImagePlus,
@@ -225,6 +226,7 @@ function QuickExpenseCapture({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [state, analyzeAction, isAnalyzing] = useActionState(
     analyzeQuickExpense,
     initialQuickState,
@@ -330,25 +332,46 @@ function QuickExpenseCapture({
                 </div>
               )}
               <div className="flex items-center justify-between gap-3">
-                <Label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-50">
-                  <ImagePlus className="size-4 shrink-0" />
-                  {selectedImages.length > 0 ? "Adicionar mais" : "Imagem"}
-                  <Input
-                    ref={imageInputRef}
-                    name="quickImage"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="absolute opacity-0 w-px h-px overflow-hidden"
-                    onChange={(e) => {
-                      const newFiles = Array.from(e.target.files ?? []);
-                      if (newFiles.length > 0) {
-                        setSelectedImages((prev) => [...prev, ...newFiles]);
-                        e.target.value = "";
-                      }
-                    }}
-                  />
-                </Label>
+                <div className="flex items-center gap-2">
+                  <Label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-50">
+                    <ImagePlus className="size-4 shrink-0" />
+                    {selectedImages.length > 0 ? "Adicionar mais" : "Imagem"}
+                    <Input
+                      ref={imageInputRef}
+                      name="quickImage"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="absolute opacity-0 w-px h-px overflow-hidden"
+                      onChange={(e) => {
+                        const newFiles = Array.from(e.target.files ?? []);
+                        if (newFiles.length > 0) {
+                          setSelectedImages((prev) => [...prev, ...newFiles]);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                  </Label>
+                  <Label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-50">
+                    <Camera className="size-4 shrink-0" />
+                    Tirar foto
+                    <Input
+                      ref={cameraInputRef}
+                      name="quickImage"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="absolute opacity-0 w-px h-px overflow-hidden"
+                      onChange={(e) => {
+                        const newFiles = Array.from(e.target.files ?? []);
+                        if (newFiles.length > 0) {
+                          setSelectedImages((prev) => [...prev, ...newFiles]);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                  </Label>
+                </div>
                 <Button type="submit" disabled={isAnalyzing || groups.length === 0}>
                   {isAnalyzing ? (
                     "Interpretando..."
