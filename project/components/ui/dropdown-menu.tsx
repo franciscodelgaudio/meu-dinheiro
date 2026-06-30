@@ -13,10 +13,54 @@ function DropdownMenu({
 }
 
 function DropdownMenuTrigger({
+  onPointerDown,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
+  const handlePointerDown = React.useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.pointerType !== "touch") {
+        onPointerDown?.(e)
+        return
+      }
+
+      const element = e.currentTarget
+      const startY = e.clientY
+      let hasMoved = false
+
+      const onMove = (ev: PointerEvent) => {
+        if (Math.abs(ev.clientY - startY) > 8) hasMoved = true
+      }
+
+      const cleanup = () => {
+        document.removeEventListener("pointermove", onMove)
+        document.removeEventListener("pointerup", cleanup)
+        document.removeEventListener("pointercancel", cleanup)
+      }
+
+      const onClickCapture = (ev: MouseEvent) => {
+        cleanup()
+        if (hasMoved) {
+          ev.stopPropagation()
+          ev.preventDefault()
+        }
+      }
+
+      document.addEventListener("pointermove", onMove, { passive: true })
+      document.addEventListener("pointerup", cleanup, { once: true })
+      document.addEventListener("pointercancel", cleanup, { once: true })
+      element.addEventListener("click", onClickCapture, { capture: true, once: true })
+
+      onPointerDown?.(e)
+    },
+    [onPointerDown],
+  )
+
   return (
-    <DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />
+    <DropdownMenuPrimitive.Trigger
+      data-slot="dropdown-menu-trigger"
+      onPointerDown={handlePointerDown}
+      {...props}
+    />
   )
 }
 

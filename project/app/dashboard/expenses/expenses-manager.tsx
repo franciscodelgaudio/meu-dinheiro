@@ -6,6 +6,8 @@ import {
   CalendarIcon,
   Camera,
   Check,
+  ChevronLeft,
+  ChevronRight,
   ChevronsUpDown,
   ImagePlus,
   CreditCard,
@@ -95,6 +97,8 @@ import {
 
 const initialState: ExpenseActionState = {};
 const initialQuickState: QuickExpenseActionState = {};
+
+const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 export type ExpenseGroupOption = {
   id: string;
@@ -196,18 +200,47 @@ function getPercentage(value: number, total: number) {
 function MonthSelector({ selectedMonth }: { selectedMonth: string }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [year, month] = selectedMonth.split("-").map(Number);
+  const [viewYear, setViewYear] = useState(year);
+
+  useEffect(() => setViewYear(year), [year]);
+
+  function selectMonth(m: number) {
+    router.push(`${pathname}?month=${viewYear}-${String(m).padStart(2, "0")}`);
+    setOpen(false);
+  }
 
   return (
-    <div className="relative">
-      <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        type="month"
-        value={selectedMonth}
-        onChange={(event) => router.push(`${pathname}?month=${event.target.value}`)}
-        className="w-[172px] pl-9"
-        aria-label="Selecionar mes"
-      />
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="icon" aria-label="Selecionar mes">
+          <CalendarIcon className="size-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-3" align="start">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <Button variant="ghost" size="icon" onClick={() => setViewYear((y) => y - 1)}>
+            <ChevronLeft className="size-4" />
+          </Button>
+          <span className="text-sm font-medium">{viewYear}</span>
+          <Button variant="ghost" size="icon" onClick={() => setViewYear((y) => y + 1)}>
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+        <div className="grid grid-cols-3 gap-1">
+          {MONTHS.map((name, i) => {
+            const m = i + 1;
+            const isSelected = m === month && viewYear === year;
+            return (
+              <Button key={m} variant={isSelected ? "default" : "ghost"} size="sm" onClick={() => selectMonth(m)}>
+                {name}
+              </Button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -327,48 +360,44 @@ function QuickExpenseCapture({
                   ))}
                 </div>
               )}
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2">
-                  <Label className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-50">
-                    <ImagePlus className="size-4 shrink-0" />
-                    {selectedImages.length > 0 ? "Adicionar mais" : "Imagem"}
-                    <Input
-                      ref={imageInputRef}
-                      name="quickImage"
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="absolute opacity-0 w-px h-px overflow-hidden"
-                      onChange={(e) => {
-                        const newFiles = Array.from(e.target.files ?? []);
-                        if (newFiles.length > 0) {
-                          setSelectedImages((prev) => [...prev, ...newFiles]);
-                          e.target.value = "";
-                        }
-                      }}
-                    />
-                  </Label>
-                  <Label className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-50">
-                    <Camera className="size-4 shrink-0" />
-                    Tirar foto
-                    <Input
-                      ref={cameraInputRef}
-                      name="quickImage"
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="absolute opacity-0 w-px h-px overflow-hidden"
-                      onChange={(e) => {
-                        const newFiles = Array.from(e.target.files ?? []);
-                        if (newFiles.length > 0) {
-                          setSelectedImages((prev) => [...prev, ...newFiles]);
-                          e.target.value = "";
-                        }
-                      }}
-                    />
-                  </Label>
-                </div>
-                <Button type="submit" className="w-full sm:w-auto" disabled={isAnalyzing || groups.length === 0}>
+              <div className="flex items-center justify-end gap-2">
+                <Label className="flex cursor-pointer items-center justify-center rounded-md border p-2 transition-colors hover:bg-zinc-50" title="Adicionar imagem">
+                  <ImagePlus className="size-4" />
+                  <Input
+                    ref={imageInputRef}
+                    name="quickImage"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="absolute opacity-0 w-px h-px overflow-hidden"
+                    onChange={(e) => {
+                      const newFiles = Array.from(e.target.files ?? []);
+                      if (newFiles.length > 0) {
+                        setSelectedImages((prev) => [...prev, ...newFiles]);
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </Label>
+                <Label className="flex cursor-pointer items-center justify-center rounded-md border p-2 transition-colors hover:bg-zinc-50" title="Tirar foto">
+                  <Camera className="size-4" />
+                  <Input
+                    ref={cameraInputRef}
+                    name="quickImage"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="absolute opacity-0 w-px h-px overflow-hidden"
+                    onChange={(e) => {
+                      const newFiles = Array.from(e.target.files ?? []);
+                      if (newFiles.length > 0) {
+                        setSelectedImages((prev) => [...prev, ...newFiles]);
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </Label>
+                <Button type="submit" disabled={isAnalyzing || groups.length === 0}>
                   {isAnalyzing ? (
                     "Interpretando..."
                   ) : (
