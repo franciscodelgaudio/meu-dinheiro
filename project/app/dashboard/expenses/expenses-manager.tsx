@@ -4,6 +4,8 @@ import { startTransition, useActionState, useEffect, useMemo, useRef, useState, 
 import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarIcon,
+  Check,
+  ChevronsUpDown,
   ImagePlus,
   CreditCard,
   Pencil,
@@ -49,12 +51,19 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -506,6 +515,7 @@ function ExpenseDialog({
   const [selectedGroupId, setSelectedGroupId] = useState(
     expense?.expenseGroupId ?? groups[0]?.id ?? "",
   );
+  const [groupComboboxOpen, setGroupComboboxOpen] = useState(false);
   const [spentAt, setSpentAt] = useState(defaultSpentAt);
   const [title, setTitle] = useState(expense?.title ?? "");
   const [amount, setAmount] = useState(expense?.amount ?? "");
@@ -636,22 +646,62 @@ function ExpenseDialog({
           <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
             <div className="grid gap-2">
               <Label>Grupo de despesas</Label>
-              <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Escolha um grupo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {groups.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      <span
-                        className="size-2.5 rounded-full"
-                        style={{ backgroundColor: group.color }}
-                      />
-                      {group.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={groupComboboxOpen} onOpenChange={setGroupComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={groupComboboxOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    {selectedGroupId ? (
+                      <span className="flex items-center gap-2 truncate">
+                        <span
+                          className="size-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: groupById.get(selectedGroupId)?.color }}
+                        />
+                        {groupById.get(selectedGroupId)?.name}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Escolha um grupo</span>
+                    )}
+                    <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Pesquisar grupo..." />
+                    <CommandList>
+                      <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
+                      <CommandGroup>
+                        {groups.map((group) => (
+                          <CommandItem
+                            key={group.id}
+                            value={group.name}
+                            onSelect={() => {
+                              setSelectedGroupId(group.id);
+                              setGroupComboboxOpen(false);
+                            }}
+                          >
+                            <span
+                              className="size-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: group.color }}
+                            />
+                            {group.name}
+                            <Check
+                              className={cn(
+                                "ml-auto size-4",
+                                selectedGroupId === group.id ? "opacity-100" : "opacity-0",
+                              )}
+                            />
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="grid gap-2">
               <Label htmlFor={`amount-${expense?.id ?? "new"}`}>Valor</Label>
