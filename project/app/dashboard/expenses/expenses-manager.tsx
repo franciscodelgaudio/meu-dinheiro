@@ -64,6 +64,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -1150,6 +1151,33 @@ export function ExpensesManager({
               <CardDescription className="capitalize">{formatReferenceMonth(selectedMonth)}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
+              {(() => {
+                const totalPlanned = visibleGroupTotals.reduce((s, g) => s + Number(g.monthlyAmount), 0);
+                const totalSpent = visibleGroupTotals.reduce((s, g) => s + Number(g.spentAmount), 0);
+                const remaining = totalPlanned - totalSpent;
+                return (
+                  <>
+                    <div className="grid gap-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-zinc-500">Gasto registrado</span>
+                        <span className="text-sm font-semibold text-red-700">{formatMoney(totalSpent, currency)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-zinc-500">Planejado</span>
+                        <span className="text-sm font-semibold text-zinc-950">{formatMoney(totalPlanned, currency)}</span>
+                      </div>
+                      <Separator className="bg-zinc-100" />
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-zinc-500">Sobra</span>
+                        <span className={`text-sm font-bold ${remaining >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                          {formatMoney(remaining, currency)}
+                        </span>
+                      </div>
+                    </div>
+                    <Separator className="bg-zinc-100" />
+                  </>
+                );
+              })()}
               {visibleGroupTotals.map((group) => {
                 const planned = Number(group.monthlyAmount);
                 const spent = Number(group.spentAmount);

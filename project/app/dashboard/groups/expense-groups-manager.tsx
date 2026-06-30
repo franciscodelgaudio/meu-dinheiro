@@ -512,7 +512,7 @@ function ExpenseGroupDialog({ group, selectedMonth }: { group?: ExpenseGroupView
 
           <div className="grid gap-2">
             <Label htmlFor={`monthlyAmount-${group?.id ?? "new"}`}>Valor no mes</Label>
-            <Input id={`monthlyAmount-${group?.id ?? "new"}`} name="monthlyAmount" type="number" min="0" step="0.01" defaultValue={group?.monthlyAmount ?? "0.00"} required />
+            <CurrencyInput id={`monthlyAmount-${group?.id ?? "new"}`} name="monthlyAmount" defaultValue={group?.monthlyAmount ?? "0"} required />
           </div>
 
           {group ? (
