@@ -153,6 +153,10 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     financeProfile?.paydayStart ?? null,
     incomeReceipt !== null,
   );
+  const currentReferenceMonth = getEffectiveCurrentMonth(
+    financeProfile?.paydayStart ?? null,
+    incomeReceipt !== null,
+  );
 
   let yearData: YearMonthSummary[] | null = null;
 
@@ -349,6 +353,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         plannedIncomes={plannedIncomes}
         savingsAllocation={savings}
         selectedMonth={selectedMonth}
+        currentReferenceMonth={currentReferenceMonth}
         currency={financeProfile?.currency ?? "BRL"}
         mode="expenses"
         view={view}

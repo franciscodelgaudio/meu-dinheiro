@@ -116,6 +116,7 @@ type ExpenseGroupsManagerProps = {
   plannedIncomes: PlannedIncomeView[];
   savingsAllocation: SavingsAllocationView | null;
   selectedMonth: string;
+  currentReferenceMonth: string;
   currency: string;
   mode: "planning" | "expenses";
   view?: "month" | "year";
@@ -195,14 +196,37 @@ function ViewToggle({ view, selectedMonth }: { view: "month" | "year"; selectedM
         variant={view === "year" ? "default" : "ghost"}
         size="sm"
         className="rounded-none border-0"
-        onClick={() => {
-          const year = selectedMonth.split("-")[0];
-          router.push(`${pathname}?month=${year}-01&view=year`);
-        }}
+        onClick={() => router.push(`${pathname}?month=${selectedMonth}&view=year`)}
       >
         Ano
       </Button>
     </div>
+  );
+}
+
+function CurrentMonthButton({
+  selectedMonth,
+  currentReferenceMonth,
+  view,
+}: {
+  selectedMonth: string;
+  currentReferenceMonth: string;
+  view: "month" | "year";
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const isCurrentMonthView = view === "month" && selectedMonth === currentReferenceMonth;
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={() => router.push(`${pathname}?month=${currentReferenceMonth}&view=month`)}
+      disabled={isCurrentMonthView}
+    >
+      Mes atual
+    </Button>
   );
 }
 
@@ -238,7 +262,7 @@ function YearSelector({ selectedMonth }: { selectedMonth: string }) {
   );
 }
 
-function YearTable({ yearData, selectedMonth, currency }: { yearData: YearMonthSummary[]; selectedMonth: string; currency: string }) {
+function YearTable({ yearData, currency }: { yearData: YearMonthSummary[]; currency: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const annualTotalIncome = yearData.reduce((s, r) => s + r.totalIncome, 0);
@@ -802,6 +826,7 @@ export function ExpenseGroupsManager({
   plannedIncomes,
   savingsAllocation,
   selectedMonth,
+  currentReferenceMonth,
   currency,
   mode,
   view = "month",
@@ -817,7 +842,6 @@ export function ExpenseGroupsManager({
   const savingsAmount = Number(savingsAllocation?.amount ?? 0);
   const totalCommitments = totalExpenses + savingsAmount;
   const remaining = totalIncome - totalCommitments;
-  const committedPercentage = getPercentage(totalCommitments, totalIncome);
 
   if (view === "year" && yearData) {
     const selectedYear = selectedMonth.split("-")[0];
@@ -841,11 +865,16 @@ export function ExpenseGroupsManager({
               </div>
               <div className="flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
                 <YearSelector selectedMonth={selectedMonth} />
+                <CurrentMonthButton
+                  selectedMonth={selectedMonth}
+                  currentReferenceMonth={currentReferenceMonth}
+                  view="year"
+                />
                 <ViewToggle view="year" selectedMonth={selectedMonth} />
               </div>
             </CardHeader>
             <CardContent className="p-0 sm:p-6 sm:pt-0">
-              <YearTable yearData={yearData} selectedMonth={selectedMonth} currency={currency} />
+              <YearTable yearData={yearData} currency={currency} />
             </CardContent>
           </Card>
 
@@ -916,8 +945,13 @@ export function ExpenseGroupsManager({
                 </div>
                 <ExpenseGroupDialog selectedMonth={selectedMonth} />
               </div>
-              <div className="flex items-center gap-2 border-t border-zinc-100 pt-3">
+              <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-3">
                 <MonthSelector selectedMonth={selectedMonth} />
+                <CurrentMonthButton
+                  selectedMonth={selectedMonth}
+                  currentReferenceMonth={currentReferenceMonth}
+                  view="month"
+                />
                 <ViewToggle view="month" selectedMonth={selectedMonth} />
                 <Button
                   type="button"
