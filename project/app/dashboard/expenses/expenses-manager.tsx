@@ -532,6 +532,14 @@ function ExpenseDialog({
     [groups],
   );
 
+  const sortedGroups = useMemo(() => {
+    const usageCount = new Map<string, number>();
+    for (const t of commonExpenses ?? []) {
+      usageCount.set(t.expenseGroupId, (usageCount.get(t.expenseGroupId) ?? 0) + t.count);
+    }
+    return [...groups].sort((a, b) => (usageCount.get(b.id) ?? 0) - (usageCount.get(a.id) ?? 0));
+  }, [groups, commonExpenses]);
+
   function applyTemplate(template: CommonExpenseTemplate) {
     setTitle(template.title);
     setAmount(template.amount);
@@ -675,7 +683,7 @@ function ExpenseDialog({
                     <CommandList>
                       <CommandEmpty>Nenhum grupo encontrado.</CommandEmpty>
                       <CommandGroup>
-                        {groups.map((group) => (
+                        {sortedGroups.map((group) => (
                           <CommandItem
                             key={group.id}
                             value={group.name}
