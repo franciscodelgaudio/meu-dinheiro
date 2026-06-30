@@ -10,7 +10,6 @@ const expenseGroupSchema = new Schema(
     repeatMonths: { type: String, default: null },
     color: { type: String, default: "#18181b" },
     description: { type: String, default: null },
-    priority: { type: String, default: "medium" },
   },
   {
     timestamps: true,

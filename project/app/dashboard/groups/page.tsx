@@ -34,7 +34,6 @@ type ExpenseGroupLean = {
   repeatMonths: string | null;
   color: string;
   description: string | null;
-  priority: string;
   updatedAt: Date;
 };
 
@@ -291,7 +290,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       repeatMonths: group.repeatMonths,
       color: override?.color ?? group.color,
       description: override ? override.description : group.description,
-      priority: group.priority,
       updatedAt: (override?.updatedAt ?? group.updatedAt).toISOString(),
     };
   });

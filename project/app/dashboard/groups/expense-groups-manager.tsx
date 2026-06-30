@@ -78,8 +78,6 @@ import { cn } from "@/lib/utils";
 
 const initialState: ExpenseGroupActionState = {};
 
-const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
-
 export type ExpenseGroupView = {
   id: string;
   referenceMonth: string;
@@ -89,7 +87,6 @@ export type ExpenseGroupView = {
   repeatMonths: string | null;
   color: string;
   description: string | null;
-  priority: string;
   updatedAt: string;
 };
 
@@ -759,20 +756,6 @@ function ExpenseGroupDialog({
             </div>
           )}
 
-          <div className="grid gap-2">
-            <Label htmlFor={`priority-${group?.id ?? "new"}`}>Prioridade</Label>
-            <Select name="priority" defaultValue={group?.priority ?? "medium"}>
-              <SelectTrigger id={`priority-${group?.id ?? "new"}`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="high">Alta — essencial, nao pode faltar</SelectItem>
-                <SelectItem value="medium">Media — importante mas flexivel</SelectItem>
-                <SelectItem value="low">Baixa — opcional, cortar se precisar</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="outline">
@@ -1223,7 +1206,7 @@ function DeleteSavingsAllocationButton({
   );
 }
 
-type SortField = "name" | "monthlyAmount" | "priority";
+type SortField = "name" | "monthlyAmount";
 type SortDir = "asc" | "desc";
 
 function sortGroups(groups: ExpenseGroupView[], field: SortField, dir: SortDir) {
@@ -1233,8 +1216,6 @@ function sortGroups(groups: ExpenseGroupView[], field: SortField, dir: SortDir) 
       cmp = a.name.localeCompare(b.name, "pt-BR");
     } else if (field === "monthlyAmount") {
       cmp = Number(a.monthlyAmount) - Number(b.monthlyAmount);
-    } else {
-      cmp = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
     }
     return dir === "asc" ? cmp : -cmp;
   });
@@ -1252,7 +1233,7 @@ export function ExpenseGroupsManager({
   yearData,
   isSelectedMonthClosed = false,
 }: ExpenseGroupsManagerProps) {
-  const [sortField, setSortField] = useState<SortField>("priority");
+  const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [showZero, setShowZero] = useState(false);
   const base = Number(baseIncome);
@@ -1465,7 +1446,6 @@ export function ExpenseGroupsManager({
                           </span>
                         </button>
                       </TableHead>
-                      <TableHead className="hidden sm:table-cell">Impacto</TableHead>
                       <TableHead className="w-20 pr-4 text-right sm:w-24 sm:pr-4">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1475,9 +1455,6 @@ export function ExpenseGroupsManager({
                       sortField,
                       sortDir,
                     ).map((group) => {
-                      const amount = Number(group.monthlyAmount);
-                      const percentage = getPercentage(amount, totalIncome);
-
                       return (
                         <TableRow key={group.id}>
                           <TableCell className="pl-4 sm:pl-4">
@@ -1489,12 +1466,6 @@ export function ExpenseGroupsManager({
                               <div className="grid gap-0.5">
                                 <div className="flex items-center gap-2">
                                   <p className="font-medium">{group.name}</p>
-                                  {group.priority === "high" && (
-                                    <Badge variant="default" className="hidden text-xs sm:inline-flex">Alta</Badge>
-                                  )}
-                                  {group.priority === "low" && (
-                                    <Badge variant="outline" className="hidden text-xs text-muted-foreground sm:inline-flex">Baixa</Badge>
-                                  )}
                                 </div>
                                 <p className="text-sm font-medium text-zinc-700 sm:hidden">
                                   {formatMoney(group.monthlyAmount, currency)}
@@ -1509,19 +1480,6 @@ export function ExpenseGroupsManager({
                           </TableCell>
                           <TableCell className="hidden font-medium sm:table-cell">
                             {formatMoney(group.monthlyAmount, currency)}
-                          </TableCell>
-                          <TableCell className="hidden sm:table-cell">
-                            <div className="grid w-36 gap-1.5">
-                              <div className="flex items-center justify-between gap-2 text-sm">
-                                <span className="text-muted-foreground">
-                                  {formatPercent(percentage)}%
-                                </span>
-                                <Badge variant={percentage > 30 ? "destructive" : "secondary"}>
-                                  da renda
-                                </Badge>
-                              </div>
-                              <Progress value={Math.min(percentage, 100)} className="h-1.5" />
-                            </div>
                           </TableCell>
                           <TableCell className="pr-4 sm:pr-4">
                             <div className="flex justify-end gap-2">

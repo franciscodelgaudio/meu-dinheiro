@@ -25,7 +25,6 @@ type ExpenseGroupInput = {
   repeatMonths: string | null;
   color: string;
   description: string | null;
-  priority: string;
 };
 
 type ExtraIncomeInput = {
@@ -64,8 +63,6 @@ function parseExpenseGroupInput(formData: FormData): ExpenseGroupInput | string 
   const affectsFutureMonths = String(formData.get("affectsFutureMonths") ?? "") === "on";
   const color = String(formData.get("color") ?? "#18181b").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
-  const priorityRaw = String(formData.get("priority") ?? "medium").trim();
-  const priority = ["high", "medium", "low"].includes(priorityRaw) ? priorityRaw : "medium";
 
   if (!/^\d{4}-\d{2}$/.test(referenceMonth)) return "Escolha um mes de referencia valido.";
   if (name.length < 2) return "Informe um nome com pelo menos 2 caracteres.";
@@ -89,7 +86,6 @@ function parseExpenseGroupInput(formData: FormData): ExpenseGroupInput | string 
     repeatMonths,
     color,
     description,
-    priority,
   };
 }
 
@@ -208,7 +204,6 @@ export async function updateExpenseGroup(
           repeatMonths: input.repeatMonths,
           color: input.color,
           description: input.description,
-          priority: input.priority,
         },
       },
     );
@@ -218,7 +213,6 @@ export async function updateExpenseGroup(
       referenceMonth: { $gte: input.referenceMonth },
     });
   } else {
-    await ExpenseGroup.updateOne({ _id: groupId }, { $set: { priority: input.priority } });
     await ExpenseGroupOverride.findOneAndUpdate(
       { expenseGroupId: groupId, referenceMonth: input.referenceMonth },
       {
