@@ -59,8 +59,6 @@ type ExpenseLean = {
   spentAt: Date;
   title: string;
   amount: number;
-  behaviorType: string;
-  coverageDays: number;
   createdAt: Date;
 };
 
@@ -158,7 +156,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     expenseGroupId: { $in: Array.from(activeGroupIds) },
     creditCardPurchaseId: null,
   })
-    .select("title amount behaviorType coverageDays expenseGroupId spentAt createdAt")
+    .select("title amount expenseGroupId spentAt createdAt")
     .sort({ spentAt: -1, createdAt: -1 })
     .limit(200)
     .lean<ExpenseLean[]>();
@@ -167,8 +165,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     {
       title: string;
       amount: string;
-      behaviorType: string;
-      coverageDays: number;
       expenseGroupId: string;
       count: number;
       latestAt: number;
@@ -189,8 +185,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       commonExpenseMap.set(key, {
         title: expense.title,
         amount: expense.amount.toString(),
-        behaviorType: expense.behaviorType,
-        coverageDays: expense.coverageDays,
         expenseGroupId: expense.expenseGroupId,
         count: 1,
         latestAt,
@@ -203,8 +197,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     if (latestAt > existing.latestAt) {
       existing.title = expense.title;
       existing.amount = expense.amount.toString();
-      existing.behaviorType = expense.behaviorType;
-      existing.coverageDays = expense.coverageDays;
       existing.latestAt = latestAt;
     }
   }
@@ -215,8 +207,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     .map((expense) => ({
       title: expense.title,
       amount: expense.amount,
-      behaviorType: expense.behaviorType,
-      coverageDays: expense.coverageDays,
       expenseGroupId: expense.expenseGroupId,
       count: expense.count,
     }));
@@ -230,8 +220,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       spentAt: expense.spentAt.toISOString(),
       title: expense.title,
       amount: expense.amount.toString(),
-      behaviorType: expense.behaviorType,
-      coverageDays: expense.coverageDays,
       expenseGroupId: expense.expenseGroupId,
       groupName: groupOverride?.name ?? group?.name ?? "Grupo removido",
       groupColor: groupOverride?.color ?? group?.color ?? "#18181b",

@@ -82,26 +82,17 @@ function parseExpenseInput(formData: FormData): ExpenseInput | string {
   const expenseGroupId = String(formData.get("expenseGroupId") ?? "").trim();
   const amountText = String(formData.get("amount") ?? "").trim().replace(",", ".");
   const amount = Number(amountText);
-  const behaviorType = String(formData.get("behaviorType") ?? "daily").trim();
-  const coverageDaysText = String(formData.get("coverageDays") ?? "1").trim();
-  const coverageDays = Number(coverageDaysText);
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(spentAtText)) return "Informe uma data valida.";
   if (title.length < 2) return "Informe uma descricao ou titulo com pelo menos 2 caracteres.";
   if (!expenseGroupId) return "Escolha um grupo de despesas.";
   if (!amountText || !Number.isFinite(amount) || amount <= 0) return "Informe quanto voce gastou.";
-  if (!EXPENSE_BEHAVIOR_TYPES.has(behaviorType)) return "Escolha um tipo de comportamento valido para o gasto.";
-  if (!coverageDaysText || !Number.isInteger(coverageDays) || coverageDays < 1 || coverageDays > 365) {
-    return "Informe quantos dias esse gasto cobre, entre 1 e 365.";
-  }
 
   return {
     spentAt: new Date(`${spentAtText}T12:00:00.000Z`),
     title,
     expenseGroupId,
     amount: Number(amount.toFixed(2)),
-    behaviorType,
-    coverageDays,
   };
 }
 
@@ -277,8 +268,6 @@ export async function createQuickExpenses(
     row.set("title", String(formData.get(`items.${index}.title`) ?? ""));
     row.set("expenseGroupId", String(formData.get(`items.${index}.expenseGroupId`) ?? ""));
     row.set("amount", String(formData.get(`items.${index}.amount`) ?? ""));
-    row.set("behaviorType", String(formData.get(`items.${index}.behaviorType`) ?? ""));
-    row.set("coverageDays", String(formData.get(`items.${index}.coverageDays`) ?? ""));
 
     const input = parseExpenseInput(row);
     if (typeof input === "string") return { status: "error", message: `Linha ${index + 1}: ${input}` };

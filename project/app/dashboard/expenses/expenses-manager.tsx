@@ -113,8 +113,6 @@ export type ExpenseView = {
   spentAt: string;
   title: string;
   amount: string;
-  behaviorType: string;
-  coverageDays: number;
   expenseGroupId: string;
   groupName: string;
   groupColor: string;
@@ -126,8 +124,6 @@ export type ExpenseView = {
 export type CommonExpenseTemplate = {
   title: string;
   amount: string;
-  behaviorType: string;
-  coverageDays: number;
   expenseGroupId: string;
   count: number;
 };
@@ -463,37 +459,7 @@ function QuickExpenseCapture({
                       </div>
                     </div>
 
-                    <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
-                      <div className="grid gap-2">
-                        <Label>Comportamento</Label>
-                        <select
-                          name={`items.${index}.behaviorType`}
-                          defaultValue={item.behaviorType}
-                          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                          required
-                        >
-                          <option value="single">Pontual</option>
-                          <option value="stock">Cobre varios dias</option>
-                          <option value="recurring">Recorrente</option>
-                          <option value="emergency">Emergencia</option>
-                        </select>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor={`quick-coverageDays-${index}`}>
-                          Cobre dias
-                        </Label>
-                        <Input
-                          id={`quick-coverageDays-${index}`}
-                          name={`items.${index}.coverageDays`}
-                          type="number"
-                          min="1"
-                          max="365"
-                          step="1"
-                          defaultValue={item.coverageDays}
-                          required
-                        />
-                      </div>
-                    </div>
+
                   </div>
                 ))}
               </div>
@@ -558,12 +524,6 @@ function ExpenseDialog({
   const [spentAt, setSpentAt] = useState(defaultSpentAt);
   const [title, setTitle] = useState(expense?.title ?? "");
   const [amount, setAmount] = useState(expense?.amount ?? "");
-  const [behaviorType, setBehaviorType] = useState(
-    expense?.behaviorType ?? "single",
-  );
-  const [coverageDays, setCoverageDays] = useState(
-    String(expense?.coverageDays ?? 1),
-  );
   const action = expense ? updateExpense : createExpense;
   const [state, formAction, isPending] = useActionState(action, initialState);
   const groupById = useMemo(
@@ -583,8 +543,6 @@ function ExpenseDialog({
     setTitle(template.title);
     setAmount(template.amount);
     setSelectedGroupId(template.expenseGroupId);
-    setBehaviorType(template.behaviorType);
-    setCoverageDays(String(template.coverageDays));
   }
 
   useEffect(() => {
@@ -631,8 +589,6 @@ function ExpenseDialog({
         <form action={formAction} className="flex flex-col gap-5 flex-1 min-h-0">
           {expense ? <input type="hidden" name="id" value={expense.id} /> : null}
           <input type="hidden" name="expenseGroupId" value={selectedGroupId} />
-          <input type="hidden" name="behaviorType" value={behaviorType} />
-          <input type="hidden" name="coverageDays" value={coverageDays} />
 
           <div className="flex flex-col gap-5 overflow-y-auto flex-1">
           {!expense && commonExpenses && commonExpenses.length > 0 ? (
