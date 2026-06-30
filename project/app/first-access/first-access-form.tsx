@@ -91,29 +91,15 @@ export function FirstAccessForm({ user }: FirstAccessFormProps) {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-[1fr_120px]">
-            <div className="grid gap-2">
-              <Label htmlFor="monthlyIncome">Renda mensal</Label>
-              <Input
-                id="monthlyIncome"
-                name="monthlyIncome"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="currency">Moeda</Label>
-              <Input
-                id="currency"
-                name="currency"
-                maxLength={3}
-                defaultValue="BRL"
-                required
-              />
-            </div>
+          <div className="grid gap-2">
+            <Label htmlFor="currency">Moeda</Label>
+            <Input
+              id="currency"
+              name="currency"
+              maxLength={3}
+              defaultValue="BRL"
+              required
+            />
           </div>
 
           <div className="grid gap-2">

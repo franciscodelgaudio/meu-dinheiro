@@ -5,7 +5,7 @@ import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 import { ExpenseGroup } from "@/lib/models/expense-group";
 import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
 import { Expense } from "@/lib/models/expense";
-import { ExtraIncome } from "@/lib/models/extra-income";
+import { PlannedIncome } from "@/lib/models/planned-income";
 import { SavingsAllocation } from "@/lib/models/savings-allocation";
 import { CreditCardPurchase } from "@/lib/models/credit-card-purchase";
 import { IncomeReceipt } from "@/lib/models/income-receipt";
@@ -15,13 +15,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Wallet,
-  ReceiptText,
   TrendingUp,
-  TrendingDown,
-  PiggyBank,
   HandCoins,
-  CreditCard,
   ArrowRight,
+  Plus,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -78,32 +75,8 @@ function getInstallmentAmounts(totalAmount: number, installmentCount: number) {
   });
 }
 
-const quickLinks = [
-  {
-    href: "/dashboard/groups",
-    icon: CreditCard,
-    label: "Grupos de despesa",
-    description: "Organize por categorias",
-    color: "bg-orange-50 text-orange-600",
-  },
-  {
-    href: "/dashboard/expenses",
-    icon: ReceiptText,
-    label: "Lançamentos",
-    description: "Registre seus gastos",
-    color: "bg-zinc-100 text-zinc-600",
-  },
-  {
-    href: "/dashboard/debts",
-    icon: HandCoins,
-    label: "Dívidas",
-    description: "Parcelas e compromissos",
-    color: "bg-violet-50 text-violet-600",
-  },
-];
 
 type FinanceProfileLean = {
-  monthlyIncome: number;
   currency: string;
   paydayStart: number | null;
 };
@@ -119,8 +92,10 @@ type ExpenseGroupOverrideLean = {
   monthlyAmount: number;
 };
 
-type ExtraIncomeLean = {
+type PlannedIncomeLean = {
   amount: number;
+  affectsFutureMonths: boolean;
+  repeatMonths: string | null;
 };
 
 type SavingsAllocationLean = {
@@ -149,7 +124,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const [financeProfile, incomeReceiptForCalendarMonth] = await Promise.all([
     UserFinanceProfile.findOne({ userId })
-      .select("monthlyIncome currency paydayStart")
+      .select("currency paydayStart")
       .lean<FinanceProfileLean>(),
     IncomeReceipt.findOne({
       userId,
@@ -184,7 +159,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const expenseGroupIds = expenseGroups.map((group) => group._id.toString());
 
-  const [expenseGroupOverrides, extraIncomes, savingsAllocation, debtCommitments] =
+  const [expenseGroupOverrides, plannedIncomeEntries, savingsAllocation, debtCommitments] =
     await Promise.all([
       ExpenseGroupOverride.find({
         userId,
@@ -193,9 +168,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       })
         .select("expenseGroupId monthlyAmount")
         .lean<ExpenseGroupOverrideLean[]>(),
-      ExtraIncome.find({ userId, referenceMonth: selectedMonth })
-        .select("amount")
-        .lean<ExtraIncomeLean[]>(),
+      PlannedIncome.find({
+        userId,
+        $or: [
+          { referenceMonth: selectedMonth },
+          { affectsFutureMonths: true, referenceMonth: { $lt: selectedMonth } },
+        ],
+      })
+        .select("amount affectsFutureMonths repeatMonths referenceMonth")
+        .sort({ referenceMonth: -1 })
+        .lean<(PlannedIncomeLean & { referenceMonth: string })[]>(),
       SavingsAllocation.findOne({ userId, referenceMonth: selectedMonth })
         .select("amount")
         .lean<SavingsAllocationLean>(),
@@ -227,9 +209,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const currency = financeProfile?.currency ?? "BRL";
   const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency });
 
-  const baseIncome = Number(financeProfile?.monthlyIncome ?? 0);
-  const extraIncome = extraIncomes.reduce((t, e) => t + Number(e.amount), 0);
-  const totalIncome = baseIncome + extraIncome;
+  const plannedIncomeForMonth = plannedIncomeEntries.find((e) => e.referenceMonth === selectedMonth) ??
+    plannedIncomeEntries.find((e) => {
+      if (!e.affectsFutureMonths) return false;
+      if (e.referenceMonth >= selectedMonth) return false;
+      if (!e.repeatMonths) return true;
+      const monthNum = Number(selectedMonth.split("-")[1]);
+      return e.repeatMonths.split(",").map(Number).includes(monthNum);
+    }) ?? null;
+  const totalIncome = Number(plannedIncomeForMonth?.amount ?? 0);
   const totalExpenses = expenseGroups.reduce(
     (t, g) => t + Number(overrideByGroupId.get(g._id.toString())?.monthlyAmount ?? g.monthlyAmount),
     0,
@@ -290,8 +278,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         />
       )}
 
-      {/* 4 metric cards */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      {/* 3 metric cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
         {/* Renda total */}
         <Card className="border-zinc-200 shadow-sm">
           <CardHeader className="pb-2">
@@ -304,31 +292,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </CardHeader>
           <CardContent>
             <p className="text-lg font-bold text-zinc-950 sm:text-2xl">{fmt.format(totalIncome)}</p>
-            {extraIncome > 0 ? (
-              <p className="mt-1 hidden text-xs text-zinc-400 sm:block">
-                Base {fmt.format(baseIncome)} + extra {fmt.format(extraIncome)}
-              </p>
-            ) : (
-              <p className="mt-1 hidden text-xs text-zinc-400 sm:block">Renda base do mês</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Gastos planejados */}
-        <Card className="border-zinc-200 shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-xs font-medium text-zinc-500">Gastos planejados</CardTitle>
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-50 text-orange-500">
-                <ReceiptText size={15} />
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-lg font-bold text-zinc-950 sm:text-2xl">{fmt.format(totalExpenses)}</p>
-            <p className="mt-1 hidden text-xs text-zinc-400 sm:block">
-              {expenseGroups.length} grupo{expenseGroups.length !== 1 ? "s" : ""} no mês
-            </p>
+            <p className="mt-1 hidden text-xs text-zinc-400 sm:block">Renda planejada do mês</p>
           </CardContent>
         </Card>
 
@@ -360,91 +324,44 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </CardContent>
         </Card>
 
-        {/* Saldo planejado */}
-        <Card
-          className={`border-zinc-200 shadow-sm ${remaining < 0 ? "bg-red-50/40" : ""}`}
-        >
+        {/* Dívidas do mês */}
+        <Card className="col-span-2 border-zinc-200 shadow-sm sm:col-span-1">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-xs font-medium text-zinc-500">Saldo planejado</CardTitle>
-              <div
-                className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                  remaining >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"
-                }`}
-              >
-                {remaining >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
+              <CardTitle className="text-xs font-medium text-zinc-500">Dívidas do mês</CardTitle>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-500">
+                <HandCoins size={15} />
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <p
-              className={`text-lg font-bold sm:text-2xl ${
-                remaining >= 0 ? "text-emerald-700" : "text-red-600"
-              }`}
-            >
-              {fmt.format(remaining)}
-            </p>
-            <p className="mt-1 hidden text-xs text-zinc-400 sm:block">
-              {remaining >= 0 ? "Após gastos, poupança e dívidas" : "Orçamento excedido"}
-            </p>
+            <p className="text-lg font-bold text-zinc-950 sm:text-2xl">{fmt.format(totalDebts)}</p>
+            <p className="mt-1 hidden text-xs text-zinc-400 sm:block">Parcelas do mês</p>
           </CardContent>
         </Card>
       </div>
-
-      {/* Savings + Debts strip */}
-      {(totalSavings > 0 || totalDebts > 0) && (
-        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-          {totalSavings > 0 && (
-            <div className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
-                <PiggyBank size={17} />
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500">Poupança do mês</p>
-                <p className="text-base font-bold text-zinc-950">{fmt.format(totalSavings)}</p>
-              </div>
-            </div>
-          )}
-          {totalDebts > 0 && (
-            <div className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-500">
-                <HandCoins size={17} />
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500">Parcelas do mês</p>
-                <p className="text-base font-bold text-zinc-950">{fmt.format(totalDebts)}</p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Quick links */}
       <div>
         <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-zinc-400">
           Acesso rápido
         </p>
-        <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
-          {quickLinks.map(({ href, icon: Icon, label, description, color }) => (
-            <Link
-              key={href}
-              href={href}
-              className="group flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
-            >
-              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${color}`}>
-                <Icon size={17} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-zinc-800">{label}</p>
-                <p className="text-xs text-zinc-400">{description}</p>
-              </div>
-              <ArrowRight
-                size={14}
-                className="shrink-0 text-zinc-300 transition group-hover:text-zinc-500"
-              />
-            </Link>
-          ))}
-        </div>
+        <Link
+          href="/dashboard/expenses"
+          className="group flex items-center gap-4 rounded-xl border border-zinc-200 bg-white px-5 py-4 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600">
+            <Plus size={20} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-zinc-800">Lançamentos</p>
+            <p className="text-xs text-zinc-400">Registre seus gastos</p>
+          </div>
+          <ArrowRight
+            size={16}
+            className="shrink-0 text-zinc-300 transition group-hover:text-zinc-500"
+          />
+        </Link>
       </div>
 
     </main>

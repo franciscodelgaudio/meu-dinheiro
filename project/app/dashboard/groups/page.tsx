@@ -5,7 +5,7 @@ import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 import { IncomeReceipt } from "@/lib/models/income-receipt";
 import { ExpenseGroup } from "@/lib/models/expense-group";
 import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
-import { ExtraIncome } from "@/lib/models/extra-income";
+import { PlannedIncome } from "@/lib/models/planned-income";
 import { SavingsAllocation } from "@/lib/models/savings-allocation";
 import { redirect } from "next/navigation";
 
@@ -20,7 +20,6 @@ type ExpensesPageProps = {
 };
 
 type FinanceProfileLean = {
-  monthlyIncome: number;
   currency: string;
   paydayStart: number | null;
 };
@@ -34,6 +33,7 @@ type ExpenseGroupLean = {
   repeatMonths: string | null;
   color: string;
   description: string | null;
+  priority: string;
   updatedAt: Date;
 };
 
@@ -47,12 +47,12 @@ type ExpenseGroupOverrideLean = {
   updatedAt: Date;
 };
 
-type ExtraIncomeLean = {
+type PlannedIncomeLean = {
   _id: { toString(): string };
   referenceMonth: string;
-  name: string;
   amount: number;
-  receivedDay: number | null;
+  affectsFutureMonths: boolean;
+  repeatMonths: string | null;
   description: string | null;
   updatedAt: Date;
 };
@@ -73,14 +73,11 @@ function isActiveInMonth(repeatMonths: string | null, targetMonth: string) {
   return repeatMonths.split(",").map(Number).includes(monthNum);
 }
 
-function isGroupActiveInMonth(
-  repeatMonths: string | null,
-  targetMonth: string,
-) {
+function isGroupActiveInMonth(repeatMonths: string | null, targetMonth: string) {
   return isActiveInMonth(repeatMonths, targetMonth);
 }
 
-function findActiveSavings<
+function findActiveEntry<
   T extends { referenceMonth: string; affectsFutureMonths: boolean; repeatMonths: string | null },
 >(entries: T[], targetMonth: string): T | null {
   const direct = entries.find((s) => s.referenceMonth === targetMonth);
@@ -131,7 +128,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
   const [financeProfile, incomeReceipt] = await Promise.all([
     UserFinanceProfile.findOne({ userId })
-      .select("monthlyIncome currency paydayStart")
+      .select("currency paydayStart")
       .lean<FinanceProfileLean>(),
     IncomeReceipt.findOne({
       userId,
@@ -145,15 +142,13 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     incomeReceipt !== null,
   );
 
-  const base = Number(financeProfile?.monthlyIncome ?? 0);
-
   let yearData: YearMonthSummary[] | null = null;
 
   if (view === "year") {
     const selectedYear = selectedMonth.split("-")[0];
     const firstMonth = `${selectedYear}-01`;
     const lastMonth = `${selectedYear}-12`;
-    const [yearGroups, yearExtraIncomes, yearSavings] = await Promise.all([
+    const [yearGroups, yearPlannedIncomes, yearSavings] = await Promise.all([
       ExpenseGroup.find({
         userId,
         $or: [
@@ -161,10 +156,15 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
           { affectsFutureMonths: true, referenceMonth: { $lt: firstMonth } },
         ],
       }).lean<ExpenseGroupLean[]>(),
-      ExtraIncome.find({
+      PlannedIncome.find({
         userId,
-        referenceMonth: { $gte: firstMonth, $lte: lastMonth },
-      }).lean<ExtraIncomeLean[]>(),
+        $or: [
+          { referenceMonth: { $gte: firstMonth, $lte: lastMonth } },
+          { affectsFutureMonths: true, referenceMonth: { $lt: firstMonth } },
+        ],
+      })
+        .sort({ referenceMonth: -1 })
+        .lean<PlannedIncomeLean[]>(),
       SavingsAllocation.find({
         userId,
         $or: [
@@ -208,22 +208,19 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
       if (totalExpenses === 0) return null;
 
-      const totalExtraIncome = yearExtraIncomes
-        .filter((e) => e.referenceMonth === month)
-        .reduce((sum, e) => sum + Number(e.amount), 0);
+      const plannedIncomeForMonth = findActiveEntry(yearPlannedIncomes, month);
+      const totalIncome = Number(plannedIncomeForMonth?.amount ?? 0);
 
       const savings = Number(
-        findActiveSavings(yearSavings, month)?.amount ?? 0,
+        findActiveEntry(yearSavings, month)?.amount ?? 0,
       );
 
-      const totalIncome = base + totalExtraIncome;
       const totalCommitments = totalExpenses + savings;
       const remaining = totalIncome - totalCommitments;
 
       return {
         month,
         totalExpenses,
-        totalExtraIncome,
         savings,
         totalIncome,
         totalCommitments,
@@ -235,7 +232,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const selectedMonthRange = getPaydayMonthRange(selectedMonth, financeProfile?.paydayStart ?? null);
   const isSelectedMonthClosed = selectedMonthRange.end <= new Date();
 
-  const [expenseGroups, extraIncomes, savingsEntries] = await Promise.all([
+  const [expenseGroups, plannedIncomeEntries, savingsEntries] = await Promise.all([
     ExpenseGroup.find({
       userId,
       $or: [
@@ -245,9 +242,15 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     })
       .sort({ referenceMonth: -1, createdAt: -1 })
       .lean<ExpenseGroupLean[]>(),
-    ExtraIncome.find({ userId, referenceMonth: selectedMonth })
-      .sort({ createdAt: -1 })
-      .lean<ExtraIncomeLean[]>(),
+    PlannedIncome.find({
+      userId,
+      $or: [
+        { referenceMonth: selectedMonth },
+        { affectsFutureMonths: true, referenceMonth: { $lt: selectedMonth } },
+      ],
+    })
+      .sort({ referenceMonth: -1 })
+      .lean<PlannedIncomeLean[]>(),
     SavingsAllocation.find({
       userId,
       $or: [
@@ -268,7 +271,9 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     expenseGroupOverrides.map((override) => [override.expenseGroupId, override]),
   );
 
-  const savingsAllocation = findActiveSavings(savingsEntries, selectedMonth);
+  const plannedIncomeForMonth = findActiveEntry(plannedIncomeEntries, selectedMonth);
+  const savingsAllocation = findActiveEntry(savingsEntries, selectedMonth);
+
   const activeExpenseGroups = expenseGroups.filter(
     (g) =>
       g.referenceMonth === selectedMonth ||
@@ -293,15 +298,19 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       updatedAt: (override?.updatedAt ?? group.updatedAt).toISOString(),
     };
   });
-  const extras = extraIncomes.map((income) => ({
-    id: income._id.toString(),
-    referenceMonth: income.referenceMonth,
-    name: income.name,
-    amount: income.amount.toString(),
-    receivedDay: income.receivedDay,
-    description: income.description,
-    updatedAt: income.updatedAt.toISOString(),
-  }));
+
+  const plannedIncome = plannedIncomeForMonth
+    ? {
+        id: plannedIncomeForMonth._id.toString(),
+        referenceMonth: plannedIncomeForMonth.referenceMonth,
+        amount: plannedIncomeForMonth.amount.toString(),
+        affectsFutureMonths: plannedIncomeForMonth.affectsFutureMonths,
+        repeatMonths: plannedIncomeForMonth.repeatMonths,
+        description: plannedIncomeForMonth.description,
+        updatedAt: plannedIncomeForMonth.updatedAt.toISOString(),
+      }
+    : null;
+
   const savings = savingsAllocation
     ? {
         id: savingsAllocation._id.toString(),
@@ -327,10 +336,9 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
       <ExpenseGroupsManager
         groups={groups}
-        extraIncomes={extras}
+        plannedIncome={plannedIncome}
         savingsAllocation={savings}
         selectedMonth={selectedMonth}
-        baseIncome={financeProfile?.monthlyIncome.toString() ?? "0.00"}
         currency={financeProfile?.currency ?? "BRL"}
         mode="expenses"
         view={view}

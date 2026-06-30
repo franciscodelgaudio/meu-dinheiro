@@ -38,7 +38,6 @@ const initialState: FinanceActionState = {};
 
 export type FinanceProfileView = {
   id: string;
-  monthlyIncome: string;
   currency: string;
   paydayStart: number | null;
   paydayEnd: number | null;
@@ -49,13 +48,6 @@ export type FinanceProfileView = {
 type FinanceProfileManagerProps = {
   profile: FinanceProfileView;
 };
-
-function formatMoney(value: string, currency: string) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency,
-  }).format(Number(value));
-}
 
 function formatRange(start: number | null, end: number | null) {
   if (start === null || end === null) {
@@ -141,29 +133,15 @@ export function FinanceProfileManager({ profile }: FinanceProfileManagerProps) {
               </DialogHeader>
 
               <form action={formAction} className="grid gap-5">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label htmlFor="monthlyIncome">Renda mensal</Label>
-                    <Input
-                      id="monthlyIncome"
-                      name="monthlyIncome"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      defaultValue={profile?.monthlyIncome ?? "0.00"}
-                      required
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="currency">Moeda</Label>
-                    <Input
-                      id="currency"
-                      name="currency"
-                      maxLength={3}
-                      defaultValue={profile?.currency ?? "BRL"}
-                      required
-                    />
-                  </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="currency">Moeda</Label>
+                  <Input
+                    id="currency"
+                    name="currency"
+                    maxLength={3}
+                    defaultValue={profile?.currency ?? "BRL"}
+                    required
+                  />
                 </div>
 
                 <div className="grid gap-2">
@@ -218,10 +196,8 @@ export function FinanceProfileManager({ profile }: FinanceProfileManagerProps) {
           {profile ? (
             <dl className="grid gap-4">
               <div className="grid gap-0.5">
-                <dt className="text-xs font-medium text-muted-foreground">Renda mensal</dt>
-                <dd className="text-sm font-medium">
-                  {formatMoney(profile.monthlyIncome, profile.currency)}
-                </dd>
+                <dt className="text-xs font-medium text-muted-foreground">Moeda</dt>
+                <dd className="text-sm font-medium">{profile.currency}</dd>
               </div>
               <div className="grid gap-0.5">
                 <dt className="text-xs font-medium text-muted-foreground">Intervalo de recebimento</dt>

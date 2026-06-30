@@ -1,5 +1,5 @@
 export {
   ExpenseGroupsManager,
   type ExpenseGroupView,
-  type ExtraIncomeView,
+  type PlannedIncomeView,
 } from "../groups/expense-groups-manager";

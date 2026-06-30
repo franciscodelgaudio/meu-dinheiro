@@ -57,8 +57,6 @@ export async function completeFirstAccess(
 
   const name = normalizeText(formData.get("name")) || null;
   const email = normalizeEmail(formData.get("email"));
-  const monthlyIncomeText = normalizeText(formData.get("monthlyIncome")).replace(",", ".");
-  const monthlyIncome = Number(monthlyIncomeText);
   const currency = normalizeCurrency(formData.get("currency"));
   const paydayStart = parseOptionalInt(formData.get("paydayStart"));
   const paydayEnd = parseOptionalInt(formData.get("paydayEnd"));
@@ -66,9 +64,6 @@ export async function completeFirstAccess(
 
   if (name && name.length > 80) return { status: "error", message: "O nome pode ter no maximo 80 caracteres." };
   if (!isValidEmail(email)) return { status: "error", message: "Informe um email valido." };
-  if (!monthlyIncomeText || !Number.isFinite(monthlyIncome) || monthlyIncome < 0) {
-    return { status: "error", message: "Informe uma renda mensal valida." };
-  }
   if (currency.length !== 3) return { status: "error", message: "Informe uma moeda com 3 letras, como BRL ou USD." };
   if (!isValidDay(paydayStart) || !isValidDay(paydayEnd)) {
     return { status: "error", message: "Os dias precisam ficar entre 1 e 31." };
@@ -100,13 +95,7 @@ export async function completeFirstAccess(
   await UserFinanceProfile.findOneAndUpdate(
     { userId },
     {
-      $set: {
-        monthlyIncome: Number(monthlyIncome.toFixed(2)),
-        currency,
-        paydayStart,
-        paydayEnd,
-        notes,
-      },
+      $set: { currency, paydayStart, paydayEnd, notes },
       $setOnInsert: { userId },
     },
     { upsert: true, new: true },

@@ -25,10 +25,9 @@ export default async function ProfilePage() {
   }
 
   const fp = await UserFinanceProfile.findOne({ userId: user._id.toString() })
-    .select("_id monthlyIncome currency paydayStart paydayEnd notes updatedAt")
+    .select("_id currency paydayStart paydayEnd notes updatedAt")
     .lean<{
       _id: { toString(): string };
-      monthlyIncome: number;
       currency: string;
       paydayStart: number | null;
       paydayEnd: number | null;
@@ -39,7 +38,6 @@ export default async function ProfilePage() {
   const profile = fp
     ? {
         id: fp._id.toString(),
-        monthlyIncome: fp.monthlyIncome.toString(),
         currency: fp.currency,
         paydayStart: fp.paydayStart,
         paydayEnd: fp.paydayEnd,

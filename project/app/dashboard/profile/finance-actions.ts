@@ -12,7 +12,6 @@ export type FinanceActionState = {
 };
 
 type FinanceInput = {
-  monthlyIncome: number;
   currency: string;
   paydayStart: number | null;
   paydayEnd: number | null;
@@ -47,16 +46,11 @@ function normalizeCurrency(value: FormDataEntryValue | null) {
 }
 
 function parseFinanceInput(formData: FormData): FinanceInput | string {
-  const monthlyIncomeText = String(formData.get("monthlyIncome") ?? "").trim().replace(",", ".");
-  const monthlyIncome = Number(monthlyIncomeText);
   const currency = normalizeCurrency(formData.get("currency"));
   const paydayStart = parseOptionalInt(formData.get("paydayStart"));
   const paydayEnd = parseOptionalInt(formData.get("paydayEnd"));
   const notes = String(formData.get("notes") ?? "").trim() || null;
 
-  if (!monthlyIncomeText || !Number.isFinite(monthlyIncome) || monthlyIncome < 0) {
-    return "Informe uma renda mensal valida.";
-  }
   if (currency.length !== 3) return "Informe uma moeda com 3 letras, como BRL ou USD.";
   if (!isValidDay(paydayStart) || !isValidDay(paydayEnd)) return "Os dias precisam ficar entre 1 e 31.";
   if ((paydayStart === null) !== (paydayEnd === null)) {
@@ -66,13 +60,7 @@ function parseFinanceInput(formData: FormData): FinanceInput | string {
     return "O inicio do recebimento nao pode ser maior que o fim.";
   }
 
-  return {
-    monthlyIncome: Number(monthlyIncome.toFixed(2)),
-    currency,
-    paydayStart,
-    paydayEnd,
-    notes,
-  };
+  return { currency, paydayStart, paydayEnd, notes };
 }
 
 export async function createFinanceProfile(

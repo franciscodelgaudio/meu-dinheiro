@@ -26,6 +26,7 @@ import {
 } from "./actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import {
   Card,
   CardContent,
@@ -293,14 +294,10 @@ function DebtDialog({
             <Label htmlFor={`totalAmount-${debt?.id ?? "new"}`}>
               Valor total
             </Label>
-            <Input
+            <CurrencyInput
               id={`totalAmount-${debt?.id ?? "new"}`}
               name="totalAmount"
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue={debt?.totalAmount ?? ""}
-              placeholder="0,00"
+              defaultValue={debt?.totalAmount ?? "0.00"}
               required
             />
           </div>
@@ -442,14 +439,10 @@ function CreditCardPurchaseDialog({ debt }: { debt: DebtView }) {
 
           <div className="grid gap-2">
             <Label htmlFor={`totalAmount-cc-${debt.id}`}>Valor total</Label>
-            <Input
+            <CurrencyInput
               id={`totalAmount-cc-${debt.id}`}
               name="totalAmount"
-              type="number"
-              min="0"
-              step="0.01"
               defaultValue={debt.totalAmount}
-              placeholder="0,00"
               required
             />
           </div>

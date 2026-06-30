@@ -28,6 +28,7 @@ import {
 } from "./actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import {
   Card,
   CardContent,
@@ -401,12 +402,9 @@ function QuickExpenseCapture({
                       </div>
                       <div className="grid gap-2">
                         <Label htmlFor={`quick-amount-${index}`}>Valor</Label>
-                        <Input
+                        <CurrencyInput
                           id={`quick-amount-${index}`}
                           name={`items.${index}.amount`}
-                          type="number"
-                          min="0"
-                          step="0.01"
                           defaultValue={item.amount}
                           required
                         />
@@ -646,15 +644,11 @@ function ExpenseDialog({
             </div>
             <div className="grid gap-2">
               <Label htmlFor={`amount-${expense?.id ?? "new"}`}>Valor</Label>
-              <Input
+              <CurrencyInput
                 id={`amount-${expense?.id ?? "new"}`}
                 name="amount"
-                type="number"
-                min="0"
-                step="0.01"
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                placeholder="0,00"
+                onChange={setAmount}
                 required
               />
             </div>
@@ -770,13 +764,10 @@ function CreditCardExpenseDialog({ selectedMonth }: { selectedMonth: string }) {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="card-totalAmount">Valor total</Label>
-              <Input
+              <CurrencyInput
                 id="card-totalAmount"
                 name="totalAmount"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0,00"
+                defaultValue="0"
                 required
               />
             </div>

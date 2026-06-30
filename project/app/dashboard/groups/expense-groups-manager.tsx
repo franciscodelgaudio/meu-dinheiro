@@ -3,7 +3,6 @@
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  CalendarDays,
   CalendarIcon,
   ChevronLeft,
   ChevronRight,
@@ -20,14 +19,13 @@ import {
 import { toast } from "sonner";
 import {
   createExpenseGroup,
-  createExtraIncome,
   deleteExpenseGroup,
-  deleteExtraIncome,
+  deletePlannedIncome,
   deleteSavingsAllocation,
   type ExpenseGroupActionState,
+  savePlannedIncome,
   saveSavingsAllocation,
   updateExpenseGroup,
-  updateExtraIncome,
 } from "./actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,13 +64,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -90,12 +81,12 @@ export type ExpenseGroupView = {
   updatedAt: string;
 };
 
-export type ExtraIncomeView = {
+export type PlannedIncomeView = {
   id: string;
   referenceMonth: string;
-  name: string;
   amount: string;
-  receivedDay: number | null;
+  affectsFutureMonths: boolean;
+  repeatMonths: string | null;
   description: string | null;
   updatedAt: string;
 };
@@ -113,7 +104,6 @@ export type SavingsAllocationView = {
 export type YearMonthSummary = {
   month: string;
   totalExpenses: number;
-  totalExtraIncome: number;
   savings: number;
   totalIncome: number;
   totalCommitments: number;
@@ -122,10 +112,9 @@ export type YearMonthSummary = {
 
 type ExpenseGroupsManagerProps = {
   groups: ExpenseGroupView[];
-  extraIncomes: ExtraIncomeView[];
+  plannedIncome: PlannedIncomeView | null;
   savingsAllocation: SavingsAllocationView | null;
   selectedMonth: string;
-  baseIncome: string;
   currency: string;
   mode: "planning" | "expenses";
   view?: "month" | "year";
@@ -148,11 +137,7 @@ function formatPercent(value: number) {
 
 function formatMonthShort(referenceMonth: string) {
   const [year, month] = referenceMonth.split("-").map(Number);
-
-  if (!year || !month) {
-    return referenceMonth;
-  }
-
+  if (!year || !month) return referenceMonth;
   return new Intl.DateTimeFormat("pt-BR", {
     month: "long",
     timeZone: "UTC",
@@ -161,11 +146,7 @@ function formatMonthShort(referenceMonth: string) {
 
 function formatReferenceMonth(referenceMonth: string) {
   const [year, month] = referenceMonth.split("-").map(Number);
-
-  if (!year || !month) {
-    return referenceMonth;
-  }
-
+  if (!year || !month) return referenceMonth;
   return new Intl.DateTimeFormat("pt-BR", {
     month: "long",
     year: "numeric",
@@ -175,22 +156,15 @@ function formatReferenceMonth(referenceMonth: string) {
 
 function getDateFromReferenceMonth(referenceMonth: string) {
   const [year, month] = referenceMonth.split("-").map(Number);
-
   return new Date(Date.UTC(year, month - 1, 1));
 }
 
 function getReferenceMonthFromDate(date: Date) {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(
-    2,
-    "0",
-  )}`;
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function getPercentage(amount: number, income: number) {
-  if (income <= 0) {
-    return 0;
-  }
-
+  if (income <= 0) return 0;
   return (amount / income) * 100;
 }
 
@@ -199,13 +173,7 @@ const MONTH_LABELS = [
   "Jul", "Ago", "Set", "Out", "Nov", "Dez",
 ];
 
-function ViewToggle({
-  view,
-  selectedMonth,
-}: {
-  view: "month" | "year";
-  selectedMonth: string;
-}) {
+function ViewToggle({ view, selectedMonth }: { view: "month" | "year"; selectedMonth: string }) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -216,9 +184,7 @@ function ViewToggle({
         variant={view === "month" ? "default" : "ghost"}
         size="sm"
         className="rounded-none border-0"
-        onClick={() =>
-          router.push(`${pathname}?month=${selectedMonth}&view=month`)
-        }
+        onClick={() => router.push(`${pathname}?month=${selectedMonth}&view=month`)}
       >
         Mês
       </Button>
@@ -253,9 +219,7 @@ function YearSelector({ selectedMonth }: { selectedMonth: string }) {
         variant="ghost"
         size="icon"
         className="rounded-none border-0"
-        onClick={() =>
-          router.push(`${pathname}?month=${year - 1}-${monthPad}&view=year`)
-        }
+        onClick={() => router.push(`${pathname}?month=${year - 1}-${monthPad}&view=year`)}
       >
         <ChevronLeft className="size-4" />
       </Button>
@@ -265,9 +229,7 @@ function YearSelector({ selectedMonth }: { selectedMonth: string }) {
         variant="ghost"
         size="icon"
         className="rounded-none border-0"
-        onClick={() =>
-          router.push(`${pathname}?month=${year + 1}-${monthPad}&view=year`)
-        }
+        onClick={() => router.push(`${pathname}?month=${year + 1}-${monthPad}&view=year`)}
       >
         <ChevronRight className="size-4" />
       </Button>
@@ -275,28 +237,13 @@ function YearSelector({ selectedMonth }: { selectedMonth: string }) {
   );
 }
 
-function YearTable({
-  yearData,
-  selectedMonth,
-  currency,
-}: {
-  yearData: YearMonthSummary[];
-  selectedMonth: string;
-  currency: string;
-}) {
+function YearTable({ yearData, selectedMonth, currency }: { yearData: YearMonthSummary[]; selectedMonth: string; currency: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const annualTotalIncome = yearData.reduce((s, r) => s + r.totalIncome, 0);
   const annualTotalExpenses = yearData.reduce((s, r) => s + r.totalExpenses, 0);
-  const annualTotalExtraIncome = yearData.reduce(
-    (s, r) => s + r.totalExtraIncome,
-    0,
-  );
   const annualTotalSavings = yearData.reduce((s, r) => s + r.savings, 0);
-  const annualTotalCommitments = yearData.reduce(
-    (s, r) => s + r.totalCommitments,
-    0,
-  );
+  const annualTotalCommitments = yearData.reduce((s, r) => s + r.totalCommitments, 0);
   const annualRemaining = yearData.reduce((s, r) => s + r.remaining, 0);
 
   return (
@@ -306,19 +253,15 @@ function YearTable({
           <TableRow>
             <TableHead>Mês</TableHead>
             <TableHead className="text-right">Grupos</TableHead>
-            <TableHead className="hidden sm:table-cell text-right">Renda extra</TableHead>
             <TableHead className="hidden sm:table-cell text-right">Poupança</TableHead>
-            <TableHead className="text-right">Disponível</TableHead>
+            <TableHead className="text-right">Renda</TableHead>
             <TableHead className="hidden sm:table-cell text-right">%</TableHead>
             <TableHead className="text-right">Sobra</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {yearData.map((row) => {
-            const committedPct = getPercentage(
-              row.totalCommitments,
-              row.totalIncome,
-            );
+            const committedPct = getPercentage(row.totalCommitments, row.totalIncome);
             const now = new Date();
             const actualCurrentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
             const isCurrent = row.month === actualCurrentMonth;
@@ -327,40 +270,31 @@ function YearTable({
               <TableRow
                 key={row.month}
                 className="cursor-pointer"
-                onClick={() =>
-                  router.push(`${pathname}?month=${row.month}&view=month`)
-                }
+                onClick={() => router.push(`${pathname}?month=${row.month}&view=month`)}
               >
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <span className={isCurrent ? "font-semibold capitalize" : "capitalize"}>
                       {formatMonthShort(row.month)}
                     </span>
-                    {isCurrent && (
-                      <Badge variant="outline" className="text-xs">Atual</Badge>
-                    )}
+                    {isCurrent && <Badge variant="outline" className="text-xs">Atual</Badge>}
                   </div>
                 </TableCell>
                 <TableCell className="text-right whitespace-nowrap">
                   {formatMoney(row.totalExpenses, currency)}
                 </TableCell>
-                <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-emerald-700">
-                  {row.totalExtraIncome > 0 ? formatMoney(row.totalExtraIncome, currency) : "—"}
-                </TableCell>
-                <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-emerald-700">
+                <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-violet-600">
                   {row.savings > 0 ? formatMoney(row.savings, currency) : "—"}
                 </TableCell>
                 <TableCell className="text-right whitespace-nowrap font-medium">
-                  {formatMoney(row.totalIncome, currency)}
+                  {row.totalIncome > 0 ? formatMoney(row.totalIncome, currency) : "—"}
                 </TableCell>
                 <TableCell className="hidden sm:table-cell text-right">
                   <span className={committedPct > 100 ? "font-medium text-red-700" : ""}>
                     {formatPercent(committedPct)}%
                   </span>
                 </TableCell>
-                <TableCell
-                  className={`text-right whitespace-nowrap font-medium ${row.remaining >= 0 ? "text-emerald-700" : "text-red-700"}`}
-                >
+                <TableCell className={`text-right whitespace-nowrap font-medium ${row.remaining >= 0 ? "text-emerald-700" : "text-red-700"}`}>
                   {formatMoney(row.remaining, currency)}
                 </TableCell>
               </TableRow>
@@ -368,24 +302,15 @@ function YearTable({
           })}
           <TableRow className="bg-muted/50 font-semibold hover:bg-muted/50">
             <TableCell>Total</TableCell>
-            <TableCell className="text-right whitespace-nowrap">
-              {formatMoney(annualTotalExpenses, currency)}
-            </TableCell>
-            <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-emerald-700">
-              {formatMoney(annualTotalExtraIncome, currency)}
-            </TableCell>
-            <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-emerald-700">
+            <TableCell className="text-right whitespace-nowrap">{formatMoney(annualTotalExpenses, currency)}</TableCell>
+            <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-violet-600">
               {formatMoney(annualTotalSavings, currency)}
             </TableCell>
-            <TableCell className="text-right whitespace-nowrap">
-              {formatMoney(annualTotalIncome, currency)}
-            </TableCell>
+            <TableCell className="text-right whitespace-nowrap">{formatMoney(annualTotalIncome, currency)}</TableCell>
             <TableCell className="hidden sm:table-cell text-right">
               {formatPercent(getPercentage(annualTotalCommitments, annualTotalIncome))}%
             </TableCell>
-            <TableCell
-              className={`text-right whitespace-nowrap ${annualRemaining >= 0 ? "text-emerald-700" : "text-red-700"}`}
-            >
+            <TableCell className={`text-right whitespace-nowrap ${annualRemaining >= 0 ? "text-emerald-700" : "text-red-700"}`}>
               {formatMoney(annualRemaining, currency)}
             </TableCell>
           </TableRow>
@@ -411,16 +336,11 @@ function MonthSelector({ selectedMonth }: { selectedMonth: string }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className="justify-start font-normal capitalize"
-        >
+        <Button type="button" variant="outline" className="justify-start font-normal capitalize">
           <CalendarIcon />
           {formatReferenceMonth(selectedMonth)}
         </Button>
       </PopoverTrigger>
-
       <PopoverContent className="w-56 p-3" align="end">
         <div className="flex items-center justify-between mb-3">
           <Button variant="ghost" size="icon" type="button" onClick={() => setYear((y) => y - 1)}>
@@ -433,17 +353,9 @@ function MonthSelector({ selectedMonth }: { selectedMonth: string }) {
         </div>
         <div className="grid grid-cols-3 gap-1">
           {MONTH_LABELS.map((label, i) => {
-            const isSelected =
-              selectedDate.getUTCFullYear() === year &&
-              selectedDate.getUTCMonth() === i;
+            const isSelected = selectedDate.getUTCFullYear() === year && selectedDate.getUTCMonth() === i;
             return (
-              <Button
-                key={i}
-                type="button"
-                variant={isSelected ? "default" : "ghost"}
-                size="sm"
-                onClick={() => goToMonth(i)}
-              >
+              <Button key={i} type="button" variant={isSelected ? "default" : "ghost"} size="sm" onClick={() => goToMonth(i)}>
                 {label}
               </Button>
             );
@@ -469,13 +381,7 @@ function formatRepeatMonthsLabel(repeatMonths: string | null): string | null {
   return `${names.slice(0, 3).join(", ")} +${names.length - 3}`;
 }
 
-function MonthRepeatPicker({
-  selected,
-  onChange,
-}: {
-  selected: number[];
-  onChange: (v: number[]) => void;
-}) {
+function MonthRepeatPicker({ selected, onChange }: { selected: number[]; onChange: (v: number[]) => void }) {
   function toggle(num: number) {
     if (selected.includes(num)) {
       if (selected.length === 1) return;
@@ -490,29 +396,11 @@ function MonthRepeatPicker({
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Meses ativos</span>
         <div className="flex gap-1">
-          <button
-            type="button"
-            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-            onClick={() => onChange(ALL_MONTHS)}
-          >
-            Todos
-          </button>
+          <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => onChange(ALL_MONTHS)}>Todos</button>
           <span className="text-xs text-muted-foreground">·</span>
-          <button
-            type="button"
-            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-            onClick={() => onChange([1, 3, 5, 7, 9, 11])}
-          >
-            Impares
-          </button>
+          <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => onChange([1, 3, 5, 7, 9, 11])}>Impares</button>
           <span className="text-xs text-muted-foreground">·</span>
-          <button
-            type="button"
-            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-            onClick={() => onChange([2, 4, 6, 8, 10, 12])}
-          >
-            Pares
-          </button>
+          <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => onChange([2, 4, 6, 8, 10, 12])}>Pares</button>
         </div>
       </div>
       <div className="grid grid-cols-4 gap-1">
@@ -523,12 +411,7 @@ function MonthRepeatPicker({
               key={num}
               type="button"
               onClick={() => toggle(num)}
-              className={cn(
-                "rounded-md border px-2 py-1.5 text-sm transition-colors",
-                active
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "hover:bg-muted",
-              )}
+              className={cn("rounded-md border px-2 py-1.5 text-sm transition-colors", active ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")}
             >
               {MONTH_LABELS[num - 1]}
             </button>
@@ -536,30 +419,18 @@ function MonthRepeatPicker({
         })}
       </div>
       <p className="text-xs text-muted-foreground">
-        {selected.length === 12
-          ? "Ativo todos os meses."
-          : `Ativo em ${selected.length} de 12 meses.`}
+        {selected.length === 12 ? "Ativo todos os meses." : `Ativo em ${selected.length} de 12 meses.`}
       </p>
     </div>
   );
 }
 
-function ExpenseGroupDialog({
-  group,
-  selectedMonth,
-}: {
-  group?: ExpenseGroupView;
-  selectedMonth: string;
-}) {
+function ExpenseGroupDialog({ group, selectedMonth }: { group?: ExpenseGroupView; selectedMonth: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [affectsFutureMonths, setAffectsFutureMonths] = useState(
-    group?.affectsFutureMonths ?? false,
-  );
+  const [affectsFutureMonths, setAffectsFutureMonths] = useState(group?.affectsFutureMonths ?? false);
   const [scope, setScope] = useState<"this-month" | "from-this-month">("this-month");
-  const [selectedRepeatMonths, setSelectedRepeatMonths] = useState<number[]>(
-    parseRepeatMonthsToArray(group?.repeatMonths ?? null),
-  );
+  const [selectedRepeatMonths, setSelectedRepeatMonths] = useState<number[]>(parseRepeatMonthsToArray(group?.repeatMonths ?? null));
   const action = group ? updateExpenseGroup : createExpenseGroup;
   const [state, formAction, isPending] = useActionState(action, initialState);
 
@@ -572,19 +443,12 @@ function ExpenseGroupDialog({
   }
 
   useEffect(() => {
-    if (!state.status || !state.message) {
-      return;
-    }
-
+    if (!state.status || !state.message) return;
     if (state.status === "success") {
       toast.success(state.message);
-      window.setTimeout(() => {
-        setOpen(false);
-        router.refresh();
-      }, 0);
+      window.setTimeout(() => { setOpen(false); router.refresh(); }, 0);
       return;
     }
-
     toast.error(state.message);
   }, [router, state]);
 
@@ -592,137 +456,59 @@ function ExpenseGroupDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {group ? (
-          <Button variant="outline" size="icon-sm" aria-label="Editar grupo">
-            <Pencil />
-          </Button>
+          <Button variant="outline" size="icon-sm" aria-label="Editar grupo"><Pencil /></Button>
         ) : (
-          <Button>
-            <Plus />
-            Novo grupo
-          </Button>
+          <Button><Plus />Novo grupo</Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>
-            {group ? "Editar grupo de despesa" : "Novo grupo de despesa"}
-          </DialogTitle>
-          <DialogDescription>
-            Registre quanto esse grupo tira da renda do mes selecionado.
-          </DialogDescription>
+          <DialogTitle>{group ? "Editar grupo de despesa" : "Novo grupo de despesa"}</DialogTitle>
+          <DialogDescription>Registre quanto esse grupo tira da renda do mes selecionado.</DialogDescription>
         </DialogHeader>
-
         <form action={formAction} className="grid gap-5">
           {group ? <input type="hidden" name="id" value={group.id} /> : null}
-          <input
-            type="hidden"
-            name="referenceMonth"
-            value={selectedMonth}
-          />
-          <input
-            type="hidden"
-            name="affectsFutureMonths"
-            value={affectsFutureMonths ? "on" : ""}
-          />
-          {group && group.affectsFutureMonths ? (
-            <input type="hidden" name="scope" value={scope} />
-          ) : null}
-          {((!group && affectsFutureMonths) ||
-            (group && group.affectsFutureMonths && scope === "from-this-month")) &&
-            selectedRepeatMonths.map((m) => (
-              <input key={m} type="hidden" name="repeatMonth" value={m} />
-            ))}
+          <input type="hidden" name="referenceMonth" value={selectedMonth} />
+          <input type="hidden" name="affectsFutureMonths" value={affectsFutureMonths ? "on" : ""} />
+          {group && group.affectsFutureMonths ? <input type="hidden" name="scope" value={scope} /> : null}
+          {((!group && affectsFutureMonths) || (group && group.affectsFutureMonths && scope === "from-this-month")) &&
+            selectedRepeatMonths.map((m) => <input key={m} type="hidden" name="repeatMonth" value={m} />)}
 
           <div className="grid gap-4 sm:grid-cols-[1fr_150px]">
             <div className="grid gap-2">
               <Label htmlFor={`name-${group?.id ?? "new"}`}>Nome</Label>
-              <Input
-                id={`name-${group?.id ?? "new"}`}
-                name="name"
-                defaultValue={group?.name ?? ""}
-                placeholder="Moradia, Alimentacao, Transporte..."
-                required
-              />
+              <Input id={`name-${group?.id ?? "new"}`} name="name" defaultValue={group?.name ?? ""} placeholder="Moradia, Alimentacao, Transporte..." required />
             </div>
             <div className="grid gap-2">
               <Label htmlFor={`color-${group?.id ?? "new"}`}>Cor</Label>
-              <Input
-                id={`color-${group?.id ?? "new"}`}
-                name="color"
-                type="color"
-                defaultValue={group?.color ?? "#18181b"}
-                className="h-9 px-2"
-                required
-              />
+              <Input id={`color-${group?.id ?? "new"}`} name="color" type="color" defaultValue={group?.color ?? "#18181b"} className="h-9 px-2" required />
             </div>
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor={`monthlyAmount-${group?.id ?? "new"}`}>
-              Valor no mes
-            </Label>
-            <Input
-              id={`monthlyAmount-${group?.id ?? "new"}`}
-              name="monthlyAmount"
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue={group?.monthlyAmount ?? "0.00"}
-              required
-            />
+            <Label htmlFor={`monthlyAmount-${group?.id ?? "new"}`}>Valor no mes</Label>
+            <Input id={`monthlyAmount-${group?.id ?? "new"}`} name="monthlyAmount" type="number" min="0" step="0.01" defaultValue={group?.monthlyAmount ?? "0.00"} required />
           </div>
 
           {group ? (
             group.affectsFutureMonths ? (
               <div className="grid gap-3">
                 <div className="grid gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setScope("this-month")}
-                    className={cn(
-                      "grid gap-1 rounded-md border p-3 text-left transition-colors hover:bg-muted/50",
-                      scope === "this-month" && "border-primary bg-muted/30",
-                    )}
-                  >
-                    <p className="text-sm font-medium">
-                      Apenas em {formatReferenceMonth(selectedMonth)}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      A recorrencia continua, mas os dados ficam so neste mes.
-                    </p>
+                  <button type="button" onClick={() => setScope("this-month")} className={cn("grid gap-1 rounded-md border p-3 text-left transition-colors hover:bg-muted/50", scope === "this-month" && "border-primary bg-muted/30")}>
+                    <p className="text-sm font-medium">Apenas em {formatReferenceMonth(selectedMonth)}</p>
+                    <p className="text-sm text-muted-foreground">A recorrencia continua, mas os dados ficam so neste mes.</p>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setScope("from-this-month")}
-                    className={cn(
-                      "grid gap-1 rounded-md border p-3 text-left transition-colors hover:bg-muted/50",
-                      scope === "from-this-month" && "border-primary bg-muted/30",
-                    )}
-                  >
-                    <p className="text-sm font-medium">
-                      A partir de {formatReferenceMonth(selectedMonth)}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Atualiza o grupo base e apaga personalizacoes deste mes em
-                      diante.
-                    </p>
+                  <button type="button" onClick={() => setScope("from-this-month")} className={cn("grid gap-1 rounded-md border p-3 text-left transition-colors hover:bg-muted/50", scope === "from-this-month" && "border-primary bg-muted/30")}>
+                    <p className="text-sm font-medium">A partir de {formatReferenceMonth(selectedMonth)}</p>
+                    <p className="text-sm text-muted-foreground">Atualiza o grupo base e apaga personalizacoes deste mes em diante.</p>
                   </button>
                 </div>
-                {scope === "from-this-month" && (
-                  <MonthRepeatPicker
-                    selected={selectedRepeatMonths}
-                    onChange={setSelectedRepeatMonths}
-                  />
-                )}
+                {scope === "from-this-month" && <MonthRepeatPicker selected={selectedRepeatMonths} onChange={setSelectedRepeatMonths} />}
               </div>
             ) : (
               <div className="grid gap-1.5 rounded-md border p-3">
-                <p className="text-sm font-medium">
-                  Edicao apenas em {formatReferenceMonth(selectedMonth)}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Grupo nao recorrente — os dados ficam somente neste mes.
-                </p>
+                <p className="text-sm font-medium">Edicao apenas em {formatReferenceMonth(selectedMonth)}</p>
+                <p className="text-sm text-muted-foreground">Grupo nao recorrente — os dados ficam somente neste mes.</p>
               </div>
             )
           ) : (
@@ -731,40 +517,20 @@ function ExpenseGroupDialog({
                 <Checkbox
                   id="affectsFutureMonths-new"
                   checked={affectsFutureMonths}
-                  onCheckedChange={(checked) => {
-                    setAffectsFutureMonths(checked === true);
-                    if (!checked) setSelectedRepeatMonths(ALL_MONTHS);
-                  }}
+                  onCheckedChange={(checked) => { setAffectsFutureMonths(checked === true); if (!checked) setSelectedRepeatMonths(ALL_MONTHS); }}
                 />
                 <div className="grid gap-1.5">
-                  <Label htmlFor="affectsFutureMonths-new">
-                    Afeta os proximos meses
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    Quando marcado, este grupo e copiado para os meses
-                    seguintes. Cada mes pode ser editado depois com seu
-                    proprio valor.
-                  </p>
+                  <Label htmlFor="affectsFutureMonths-new">Afeta os proximos meses</Label>
+                  <p className="text-sm text-muted-foreground">Quando marcado, este grupo e copiado para os meses seguintes. Cada mes pode ser editado depois com seu proprio valor.</p>
                 </div>
               </div>
-              {affectsFutureMonths && (
-                <MonthRepeatPicker
-                  selected={selectedRepeatMonths}
-                  onChange={setSelectedRepeatMonths}
-                />
-              )}
+              {affectsFutureMonths && <MonthRepeatPicker selected={selectedRepeatMonths} onChange={setSelectedRepeatMonths} />}
             </div>
           )}
 
           <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                Cancelar
-              </Button>
-            </DialogClose>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Salvando..." : "Salvar"}
-            </Button>
+            <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+            <Button type="submit" disabled={isPending}>{isPending ? "Salvando..." : "Salvar"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -772,223 +538,124 @@ function ExpenseGroupDialog({
   );
 }
 
-function ExtraIncomeDialog({
-  income,
-  selectedMonth,
-}: {
-  income?: ExtraIncomeView;
-  selectedMonth: string;
-}) {
+function PlannedIncomeDialog({ plannedIncome, selectedMonth }: { plannedIncome: PlannedIncomeView | null; selectedMonth: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const action = income ? updateExtraIncome : createExtraIncome;
-  const [state, formAction, isPending] = useActionState(action, initialState);
-
-  useEffect(() => {
-    if (!state.status || !state.message) {
-      return;
-    }
-
-    if (state.status === "success") {
-      toast.success(state.message);
-      window.setTimeout(() => {
-        setOpen(false);
-        router.refresh();
-      }, 0);
-      return;
-    }
-
-    toast.error(state.message);
-  }, [router, state]);
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {income ? (
-          <Button variant="outline" size="icon-sm" aria-label="Editar renda extra">
-            <Pencil />
-          </Button>
-        ) : (
-          <Button variant="outline">
-            <Plus />
-            Renda extra
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>
-            {income ? "Editar renda extra" : "Adicionar renda extra"}
-          </DialogTitle>
-          <DialogDescription>
-            Inclua qualquer entrada adicional do mes selecionado.
-          </DialogDescription>
-        </DialogHeader>
-
-        <form action={formAction} className="grid gap-5">
-          {income ? <input type="hidden" name="id" value={income.id} /> : null}
-          <input
-            type="hidden"
-            name="referenceMonth"
-            value={income?.referenceMonth ?? selectedMonth}
-          />
-
-          <div className="grid gap-2">
-            <Label htmlFor={`extra-name-${income?.id ?? "new"}`}>Nome</Label>
-            <Input
-              id={`extra-name-${income?.id ?? "new"}`}
-              name="name"
-              defaultValue={income?.name ?? ""}
-              placeholder="Freela, bonus, emprestimo recebido..."
-              required
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor={`amount-${income?.id ?? "new"}`}>Valor</Label>
-            <Input
-              id={`amount-${income?.id ?? "new"}`}
-              name="amount"
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue={income?.amount ?? "0.00"}
-              required
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor={`receivedDay-${income?.id ?? "new"}`}>
-              Dia de recebimento
-            </Label>
-            <Input
-              id={`receivedDay-${income?.id ?? "new"}`}
-              name="receivedDay"
-              type="number"
-              min="1"
-              max="31"
-              placeholder="Ex: 5"
-              defaultValue={income?.receivedDay ?? ""}
-            />
-            <p className="text-xs text-muted-foreground">
-              Dia exato do mes em que voce recebeu este valor.
-            </p>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor={`extra-description-${income?.id ?? "new"}`}>
-              Descricao
-            </Label>
-            <Textarea
-              id={`extra-description-${income?.id ?? "new"}`}
-              name="description"
-              defaultValue={income?.description ?? ""}
-              rows={3}
-            />
-          </div>
-
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                Cancelar
-              </Button>
-            </DialogClose>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Salvando..." : "Salvar"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function SavingsAllocationDialog({
-  savingsAllocation,
-  selectedMonth,
-}: {
-  savingsAllocation: SavingsAllocationView | null;
-  selectedMonth: string;
-}) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [affectsFutureMonths, setAffectsFutureMonths] = useState(
-    savingsAllocation?.affectsFutureMonths ?? false,
-  );
-  const [selectedRepeatMonths, setSelectedRepeatMonths] = useState<number[]>(
-    parseRepeatMonthsToArray(savingsAllocation?.repeatMonths ?? null),
-  );
-  const [state, formAction, isPending] = useActionState(
-    saveSavingsAllocation,
-    initialState,
-  );
+  const [affectsFutureMonths, setAffectsFutureMonths] = useState(plannedIncome?.affectsFutureMonths ?? false);
+  const [selectedRepeatMonths, setSelectedRepeatMonths] = useState<number[]>(parseRepeatMonthsToArray(plannedIncome?.repeatMonths ?? null));
+  const [state, formAction, isPending] = useActionState(savePlannedIncome, initialState);
 
   function handleOpenChange(next: boolean) {
     if (next) {
-      setAffectsFutureMonths(savingsAllocation?.affectsFutureMonths ?? false);
-      setSelectedRepeatMonths(
-        parseRepeatMonthsToArray(savingsAllocation?.repeatMonths ?? null),
-      );
+      setAffectsFutureMonths(plannedIncome?.affectsFutureMonths ?? false);
+      setSelectedRepeatMonths(parseRepeatMonthsToArray(plannedIncome?.repeatMonths ?? null));
     }
     setOpen(next);
   }
 
   useEffect(() => {
-    if (!state.status || !state.message) {
-      return;
-    }
-
+    if (!state.status || !state.message) return;
     if (state.status === "success") {
       toast.success(state.message);
-      window.setTimeout(() => {
-        setOpen(false);
-        router.refresh();
-      }, 0);
+      window.setTimeout(() => { setOpen(false); router.refresh(); }, 0);
       return;
     }
-
     toast.error(state.message);
   }, [router, state]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline">
-          <PiggyBank />
-          Poupanca
-        </Button>
+        <Button variant="outline"><HandCoins />Renda</Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Renda planejada do mes</DialogTitle>
+          <DialogDescription>Defina a renda esperada para {formatReferenceMonth(selectedMonth)}.</DialogDescription>
+        </DialogHeader>
+        <form action={formAction} className="grid gap-5">
+          <input type="hidden" name="referenceMonth" value={selectedMonth} />
+          <input type="hidden" name="affectsFutureMonths" value={affectsFutureMonths ? "on" : ""} />
+          {affectsFutureMonths && selectedRepeatMonths.map((m) => <input key={m} type="hidden" name="repeatMonth" value={m} />)}
+
+          <div className="grid gap-2">
+            <Label htmlFor="planned-income-amount">Valor esperado</Label>
+            <Input id="planned-income-amount" name="amount" type="number" min="0" step="0.01" defaultValue={plannedIncome?.amount ?? "0.00"} required />
+          </div>
+
+          <div className="grid gap-3">
+            <div className="flex items-start gap-3 rounded-md border p-3">
+              <Checkbox
+                id="planned-income-affectsFutureMonths"
+                checked={affectsFutureMonths}
+                onCheckedChange={(checked) => { setAffectsFutureMonths(checked === true); if (!checked) setSelectedRepeatMonths(ALL_MONTHS); }}
+              />
+              <div className="grid gap-1.5">
+                <Label htmlFor="planned-income-affectsFutureMonths">Repetir nos proximos meses</Label>
+                <p className="text-sm text-muted-foreground">Quando marcado, esta renda e aplicada nos meses seguintes conforme os meses selecionados.</p>
+              </div>
+            </div>
+            {affectsFutureMonths && <MonthRepeatPicker selected={selectedRepeatMonths} onChange={setSelectedRepeatMonths} />}
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="planned-income-description">Descricao</Label>
+            <Textarea id="planned-income-description" name="description" defaultValue={plannedIncome?.description ?? ""} rows={3} placeholder="Salario, honorarios, receita recorrente..." />
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+            <Button type="submit" disabled={isPending}>{isPending ? "Salvando..." : "Salvar"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SavingsAllocationDialog({ savingsAllocation, selectedMonth }: { savingsAllocation: SavingsAllocationView | null; selectedMonth: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [affectsFutureMonths, setAffectsFutureMonths] = useState(savingsAllocation?.affectsFutureMonths ?? false);
+  const [selectedRepeatMonths, setSelectedRepeatMonths] = useState<number[]>(parseRepeatMonthsToArray(savingsAllocation?.repeatMonths ?? null));
+  const [state, formAction, isPending] = useActionState(saveSavingsAllocation, initialState);
+
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      setAffectsFutureMonths(savingsAllocation?.affectsFutureMonths ?? false);
+      setSelectedRepeatMonths(parseRepeatMonthsToArray(savingsAllocation?.repeatMonths ?? null));
+    }
+    setOpen(next);
+  }
+
+  useEffect(() => {
+    if (!state.status || !state.message) return;
+    if (state.status === "success") {
+      toast.success(state.message);
+      window.setTimeout(() => { setOpen(false); router.refresh(); }, 0);
+      return;
+    }
+    toast.error(state.message);
+  }, [router, state]);
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="outline"><PiggyBank />Poupanca</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Guardar na poupanca</DialogTitle>
-          <DialogDescription>
-            Separe um valor do planejado para guardar neste mes.
-          </DialogDescription>
+          <DialogDescription>Separe um valor do planejado para guardar neste mes.</DialogDescription>
         </DialogHeader>
-
         <form action={formAction} className="grid gap-5">
           <input type="hidden" name="referenceMonth" value={selectedMonth} />
-          <input
-            type="hidden"
-            name="affectsFutureMonths"
-            value={affectsFutureMonths ? "on" : ""}
-          />
-          {affectsFutureMonths &&
-            selectedRepeatMonths.map((m) => (
-              <input key={m} type="hidden" name="repeatMonth" value={m} />
-            ))}
+          <input type="hidden" name="affectsFutureMonths" value={affectsFutureMonths ? "on" : ""} />
+          {affectsFutureMonths && selectedRepeatMonths.map((m) => <input key={m} type="hidden" name="repeatMonth" value={m} />)}
 
           <div className="grid gap-2">
             <Label htmlFor="savings-amount">Valor para guardar</Label>
-            <Input
-              id="savings-amount"
-              name="amount"
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue={savingsAllocation?.amount ?? "0.00"}
-              required
-            />
+            <Input id="savings-amount" name="amount" type="number" min="0" step="0.01" defaultValue={savingsAllocation?.amount ?? "0.00"} required />
           </div>
 
           <div className="grid gap-3">
@@ -996,49 +663,24 @@ function SavingsAllocationDialog({
               <Checkbox
                 id="savings-affectsFutureMonths"
                 checked={affectsFutureMonths}
-                onCheckedChange={(checked) => {
-                  setAffectsFutureMonths(checked === true);
-                  if (!checked) setSelectedRepeatMonths(ALL_MONTHS);
-                }}
+                onCheckedChange={(checked) => { setAffectsFutureMonths(checked === true); if (!checked) setSelectedRepeatMonths(ALL_MONTHS); }}
               />
               <div className="grid gap-1.5">
-                <Label htmlFor="savings-affectsFutureMonths">
-                  Repetir nos proximos meses
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Quando marcado, esta poupanca e aplicada nos meses seguintes
-                  conforme os meses selecionados.
-                </p>
+                <Label htmlFor="savings-affectsFutureMonths">Repetir nos proximos meses</Label>
+                <p className="text-sm text-muted-foreground">Quando marcado, esta poupanca e aplicada nos meses seguintes conforme os meses selecionados.</p>
               </div>
             </div>
-            {affectsFutureMonths && (
-              <MonthRepeatPicker
-                selected={selectedRepeatMonths}
-                onChange={setSelectedRepeatMonths}
-              />
-            )}
+            {affectsFutureMonths && <MonthRepeatPicker selected={selectedRepeatMonths} onChange={setSelectedRepeatMonths} />}
           </div>
 
           <div className="grid gap-2">
             <Label htmlFor="savings-description">Descricao</Label>
-            <Textarea
-              id="savings-description"
-              name="description"
-              defaultValue={savingsAllocation?.description ?? ""}
-              rows={3}
-              placeholder="Reserva, objetivo do mes, emergencia..."
-            />
+            <Textarea id="savings-description" name="description" defaultValue={savingsAllocation?.description ?? ""} rows={3} placeholder="Reserva, objetivo do mes, emergencia..." />
           </div>
 
           <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                Cancelar
-              </Button>
-            </DialogClose>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Salvando..." : "Salvar"}
-            </Button>
+            <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+            <Button type="submit" disabled={isPending}>{isPending ? "Salvando..." : "Salvar"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1054,42 +696,22 @@ function DeleteExpenseGroupButton({ group }: { group: ExpenseGroupView }) {
   function handleDelete() {
     startTransition(async () => {
       const result = await deleteExpenseGroup(group.id);
-
-      if (result.status === "success") {
-        toast.success(result.message);
-        router.refresh();
-        setOpen(false);
-        return;
-      }
-
+      if (result.status === "success") { toast.success(result.message); router.refresh(); setOpen(false); return; }
       toast.error(result.message ?? "Nao foi possivel remover o grupo.");
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="destructive" size="icon-sm" aria-label="Excluir grupo">
-          <Trash2 />
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger asChild><Button variant="destructive" size="icon-sm" aria-label="Excluir grupo"><Trash2 /></Button></DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Excluir grupo?</DialogTitle>
           <DialogDescription>Esta acao nao pode ser desfeita.</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline">
-              Cancelar
-            </Button>
-          </DialogClose>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={isPending}
-          >
+          <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+          <Button type="button" variant="destructive" onClick={handleDelete} disabled={isPending}>
             {isPending ? "Excluindo..." : "Excluir"}
           </Button>
         </DialogFooter>
@@ -1098,51 +720,31 @@ function DeleteExpenseGroupButton({ group }: { group: ExpenseGroupView }) {
   );
 }
 
-function DeleteExtraIncomeButton({ income }: { income: ExtraIncomeView }) {
+function DeletePlannedIncomeButton({ incomeId }: { incomeId: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
 
   function handleDelete() {
     startTransition(async () => {
-      const result = await deleteExtraIncome(income.id);
-
-      if (result.status === "success") {
-        toast.success(result.message);
-        router.refresh();
-        setOpen(false);
-        return;
-      }
-
-      toast.error(result.message ?? "Nao foi possivel remover a renda extra.");
+      const result = await deletePlannedIncome(incomeId);
+      if (result.status === "success") { toast.success(result.message); router.refresh(); setOpen(false); return; }
+      toast.error(result.message ?? "Nao foi possivel remover a renda planejada.");
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="destructive" size="icon-sm" aria-label="Excluir renda extra">
-          <Trash2 />
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger asChild><Button variant="outline" size="icon-sm" aria-label="Remover renda planejada"><Trash2 /></Button></DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Excluir renda extra?</DialogTitle>
+          <DialogTitle>Remover renda planejada?</DialogTitle>
           <DialogDescription>Esta acao nao pode ser desfeita.</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline">
-              Cancelar
-            </Button>
-          </DialogClose>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={isPending}
-          >
-            {isPending ? "Excluindo..." : "Excluir"}
+          <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+          <Button type="button" variant="destructive" onClick={handleDelete} disabled={isPending}>
+            {isPending ? "Removendo..." : "Remover"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1150,11 +752,7 @@ function DeleteExtraIncomeButton({ income }: { income: ExtraIncomeView }) {
   );
 }
 
-function DeleteSavingsAllocationButton({
-  savingsId,
-}: {
-  savingsId: string;
-}) {
+function DeleteSavingsAllocationButton({ savingsId }: { savingsId: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -1162,42 +760,22 @@ function DeleteSavingsAllocationButton({
   function handleDelete() {
     startTransition(async () => {
       const result = await deleteSavingsAllocation(savingsId);
-
-      if (result.status === "success") {
-        toast.success(result.message);
-        router.refresh();
-        setOpen(false);
-        return;
-      }
-
+      if (result.status === "success") { toast.success(result.message); router.refresh(); setOpen(false); return; }
       toast.error(result.message ?? "Nao foi possivel remover a poupanca.");
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="icon-sm" aria-label="Remover poupanca">
-          <Trash2 />
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger asChild><Button variant="outline" size="icon-sm" aria-label="Remover poupanca"><Trash2 /></Button></DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Remover poupanca?</DialogTitle>
           <DialogDescription>Esta acao nao pode ser desfeita.</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline">
-              Cancelar
-            </Button>
-          </DialogClose>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={isPending}
-          >
+          <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+          <Button type="button" variant="destructive" onClick={handleDelete} disabled={isPending}>
             {isPending ? "Removendo..." : "Remover"}
           </Button>
         </DialogFooter>
@@ -1212,21 +790,17 @@ type SortDir = "asc" | "desc";
 function sortGroups(groups: ExpenseGroupView[], field: SortField, dir: SortDir) {
   return [...groups].sort((a, b) => {
     let cmp = 0;
-    if (field === "name") {
-      cmp = a.name.localeCompare(b.name, "pt-BR");
-    } else if (field === "monthlyAmount") {
-      cmp = Number(a.monthlyAmount) - Number(b.monthlyAmount);
-    }
+    if (field === "name") cmp = a.name.localeCompare(b.name, "pt-BR");
+    else if (field === "monthlyAmount") cmp = Number(a.monthlyAmount) - Number(b.monthlyAmount);
     return dir === "asc" ? cmp : -cmp;
   });
 }
 
 export function ExpenseGroupsManager({
   groups,
-  extraIncomes,
+  plannedIncome,
   savingsAllocation,
   selectedMonth,
-  baseIncome,
   currency,
   mode,
   view = "month",
@@ -1236,16 +810,9 @@ export function ExpenseGroupsManager({
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [showZero, setShowZero] = useState(false);
-  const base = Number(baseIncome);
-  const totalExtraIncome = extraIncomes.reduce(
-    (total, income) => total + Number(income.amount),
-    0,
-  );
-  const totalIncome = base + totalExtraIncome;
-  const totalExpenses = groups.reduce(
-    (total, group) => total + Number(group.monthlyAmount),
-    0,
-  );
+
+  const totalIncome = Number(plannedIncome?.amount ?? 0);
+  const totalExpenses = groups.reduce((total, group) => total + Number(group.monthlyAmount), 0);
   const savingsAmount = Number(savingsAllocation?.amount ?? 0);
   const totalCommitments = totalExpenses + savingsAmount;
   const remaining = totalIncome - totalCommitments;
@@ -1253,26 +820,12 @@ export function ExpenseGroupsManager({
 
   if (view === "year" && yearData) {
     const selectedYear = selectedMonth.split("-")[0];
-    const annualBase = base * 12;
-    const annualTotalExtraIncome = yearData.reduce(
-      (s, r) => s + r.totalExtraIncome,
-      0,
-    );
     const annualTotalIncome = yearData.reduce((s, r) => s + r.totalIncome, 0);
-    const annualTotalExpenses = yearData.reduce(
-      (s, r) => s + r.totalExpenses,
-      0,
-    );
+    const annualTotalExpenses = yearData.reduce((s, r) => s + r.totalExpenses, 0);
     const annualTotalSavings = yearData.reduce((s, r) => s + r.savings, 0);
-    const annualTotalCommitments = yearData.reduce(
-      (s, r) => s + r.totalCommitments,
-      0,
-    );
+    const annualTotalCommitments = yearData.reduce((s, r) => s + r.totalCommitments, 0);
     const annualRemaining = yearData.reduce((s, r) => s + r.remaining, 0);
-    const annualCommittedPct = getPercentage(
-      annualTotalCommitments,
-      annualTotalIncome,
-    );
+    const annualCommittedPct = getPercentage(annualTotalCommitments, annualTotalIncome);
 
     return (
       <div className="grid gap-4 sm:gap-6">
@@ -1281,9 +834,7 @@ export function ExpenseGroupsManager({
             <CardHeader className="gap-3 pb-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-0.5">
-                  <CardTitle className="text-base font-semibold text-zinc-950">
-                    Grupos de despesas
-                  </CardTitle>
+                  <CardTitle className="text-base font-semibold text-zinc-950">Grupos de despesas</CardTitle>
                   <CardDescription>Visão anual — {selectedYear}</CardDescription>
                 </div>
               </div>
@@ -1293,45 +844,29 @@ export function ExpenseGroupsManager({
               </div>
             </CardHeader>
             <CardContent className="p-0 sm:p-6 sm:pt-0">
-              <YearTable
-                yearData={yearData}
-                selectedMonth={selectedMonth}
-                currency={currency}
-              />
+              <YearTable yearData={yearData} selectedMonth={selectedMonth} currency={currency} />
             </CardContent>
           </Card>
 
           <div className="grid content-start gap-4">
             <Card className="border-zinc-200 shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-zinc-800">
-                  Controle anual
-                </CardTitle>
+                <CardTitle className="text-sm font-semibold text-zinc-800">Controle anual</CardTitle>
                 <CardDescription>{selectedYear}</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
-                <div className="grid gap-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-zinc-500">Renda base (×12)</span>
-                    <span className="text-sm font-semibold text-zinc-950">
-                      {formatMoney(annualBase, currency)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-zinc-500">Renda extra</span>
-                    <span className={`text-sm font-semibold ${annualTotalExtraIncome > 0 ? "text-emerald-600" : "text-zinc-400"}`}>
-                      {formatMoney(annualTotalExtraIncome, currency)}
-                    </span>
-                  </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-zinc-500">Renda planejada</span>
+                  <span className="text-sm font-semibold text-zinc-950">
+                    {formatMoney(annualTotalIncome, currency)}
+                  </span>
                 </div>
 
                 <Separator className="bg-zinc-100" />
 
                 <div>
                   <p className="text-xs text-zinc-500">Disponível no ano</p>
-                  <p className="mt-0.5 text-2xl font-bold text-zinc-950">
-                    {formatMoney(annualTotalIncome, currency)}
-                  </p>
+                  <p className="mt-0.5 text-2xl font-bold text-zinc-950">{formatMoney(annualTotalIncome, currency)}</p>
                 </div>
 
                 <Separator className="bg-zinc-100" />
@@ -1339,9 +874,7 @@ export function ExpenseGroupsManager({
                 <div className="grid gap-2.5">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm text-zinc-500">Total em grupos</span>
-                    <span className="text-sm font-semibold text-zinc-950">
-                      {formatMoney(annualTotalExpenses, currency)}
-                    </span>
+                    <span className="text-sm font-semibold text-zinc-950">{formatMoney(annualTotalExpenses, currency)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm text-zinc-500">Poupança</span>
@@ -1350,9 +883,7 @@ export function ExpenseGroupsManager({
                     </span>
                   </div>
                   <Progress value={Math.min(annualCommittedPct, 100)} className="h-1.5" />
-                  <p className="text-xs text-zinc-400">
-                    {formatPercent(annualCommittedPct)}% da renda comprometida
-                  </p>
+                  <p className="text-xs text-zinc-400">{formatPercent(annualCommittedPct)}% da renda comprometida</p>
                 </div>
 
                 <Separator className="bg-zinc-100" />
@@ -1377,19 +908,13 @@ export function ExpenseGroupsManager({
         {mode === "expenses" ? (
           <Card className="border-zinc-200 shadow-sm">
             <CardHeader className="gap-0 pb-0">
-              {/* Linha 1: título + ação primária */}
               <div className="flex items-start justify-between gap-3 pb-3">
                 <div className="space-y-0.5">
-                  <CardTitle className="text-base font-semibold text-zinc-950">
-                    Grupos de despesas
-                  </CardTitle>
-                  <CardDescription className="capitalize">
-                    {formatReferenceMonth(selectedMonth)}
-                  </CardDescription>
+                  <CardTitle className="text-base font-semibold text-zinc-950">Grupos de despesas</CardTitle>
+                  <CardDescription className="capitalize">{formatReferenceMonth(selectedMonth)}</CardDescription>
                 </div>
                 <ExpenseGroupDialog selectedMonth={selectedMonth} />
               </div>
-              {/* Linha 2: navegação */}
               <div className="flex items-center gap-2 border-t border-zinc-100 pt-3">
                 <MonthSelector selectedMonth={selectedMonth} />
                 <ViewToggle view="month" selectedMonth={selectedMonth} />
@@ -1420,79 +945,49 @@ export function ExpenseGroupsManager({
                         <button
                           type="button"
                           className="flex items-center gap-1 hover:text-foreground"
-                          onClick={() => {
-                            if (sortField === "name") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                            else { setSortField("name"); setSortDir("asc"); }
-                          }}
+                          onClick={() => { if (sortField === "name") setSortDir((d) => (d === "asc" ? "desc" : "asc")); else { setSortField("name"); setSortDir("asc"); } }}
                         >
                           Grupo
-                          <span className="text-xs text-muted-foreground">
-                            {sortField === "name" ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
-                          </span>
+                          <span className="text-xs text-muted-foreground">{sortField === "name" ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
                         </button>
                       </TableHead>
                       <TableHead className="hidden sm:table-cell">
                         <button
                           type="button"
                           className="flex items-center gap-1 hover:text-foreground"
-                          onClick={() => {
-                            if (sortField === "monthlyAmount") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                            else { setSortField("monthlyAmount"); setSortDir("asc"); }
-                          }}
+                          onClick={() => { if (sortField === "monthlyAmount") setSortDir((d) => (d === "asc" ? "desc" : "asc")); else { setSortField("monthlyAmount"); setSortDir("asc"); } }}
                         >
                           Valor no mês
-                          <span className="text-xs text-muted-foreground">
-                            {sortField === "monthlyAmount" ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
-                          </span>
+                          <span className="text-xs text-muted-foreground">{sortField === "monthlyAmount" ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
                         </button>
                       </TableHead>
                       <TableHead className="w-20 pr-4 text-right sm:w-24 sm:pr-4">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sortGroups(
-                      showZero ? groups : groups.filter((g) => Number(g.monthlyAmount) > 0),
-                      sortField,
-                      sortDir,
-                    ).map((group) => {
-                      return (
-                        <TableRow key={group.id}>
-                          <TableCell className="pl-4 sm:pl-4">
-                            <div className="flex items-center gap-3">
-                              <span
-                                className="size-3 shrink-0 rounded-full"
-                                style={{ backgroundColor: group.color }}
-                              />
-                              <div className="grid gap-0.5">
-                                <div className="flex items-center gap-2">
-                                  <p className="font-medium">{group.name}</p>
-                                </div>
-                                <p className="text-sm font-medium text-zinc-700 sm:hidden">
-                                  {formatMoney(group.monthlyAmount, currency)}
-                                </p>
-                                {group.repeatMonths && (
-                                  <p className="text-xs text-muted-foreground">
-                                    {formatRepeatMonthsLabel(group.repeatMonths)}
-                                  </p>
-                                )}
+                    {sortGroups(showZero ? groups : groups.filter((g) => Number(g.monthlyAmount) > 0), sortField, sortDir).map((group) => (
+                      <TableRow key={group.id}>
+                        <TableCell className="pl-4 sm:pl-4">
+                          <div className="flex items-center gap-3">
+                            <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: group.color }} />
+                            <div className="grid gap-0.5">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">{group.name}</p>
                               </div>
+                              <p className="text-sm font-medium text-zinc-700 sm:hidden">{formatMoney(group.monthlyAmount, currency)}</p>
+                              {group.repeatMonths && <p className="text-xs text-muted-foreground">{formatRepeatMonthsLabel(group.repeatMonths)}</p>}
                             </div>
-                          </TableCell>
-                          <TableCell className="hidden font-medium sm:table-cell">
-                            {formatMoney(group.monthlyAmount, currency)}
-                          </TableCell>
-                          <TableCell className="pr-4 sm:pr-4">
-                            <div className="flex justify-end gap-2">
-                              <ExpenseGroupDialog
-                                group={group}
-                                selectedMonth={selectedMonth}
-                              />
-                              <DeleteExpenseGroupButton group={group} />
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden font-medium sm:table-cell">{formatMoney(group.monthlyAmount, currency)}</TableCell>
+                        <TableCell className="pr-4 sm:pr-4">
+                          <div className="flex justify-end gap-2">
+                            <ExpenseGroupDialog group={group} selectedMonth={selectedMonth} />
+                            <DeleteExpenseGroupButton group={group} />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               ) : (
@@ -1502,9 +997,7 @@ export function ExpenseGroupsManager({
                   </div>
                   <div>
                     <p className="font-semibold text-zinc-800">Nenhum grupo neste mês</p>
-                    <p className="mt-1 max-w-sm text-sm text-zinc-400">
-                      Crie grupos para simular o impacto de cada despesa na sua renda.
-                    </p>
+                    <p className="mt-1 max-w-sm text-sm text-zinc-400">Crie grupos para simular o impacto de cada despesa na sua renda.</p>
                   </div>
                 </div>
               )}
@@ -1515,49 +1008,32 @@ export function ExpenseGroupsManager({
         <div className="grid content-start gap-4">
           <Card className="border-zinc-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold text-zinc-800">
-                Controle mensal
-              </CardTitle>
-              <CardDescription className="capitalize">
-                {formatReferenceMonth(selectedMonth)}
-              </CardDescription>
+              <CardTitle className="text-sm font-semibold text-zinc-800">Controle mensal</CardTitle>
+              <CardDescription className="capitalize">{formatReferenceMonth(selectedMonth)}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
-              {/* Renda */}
               <div className="grid gap-2">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-zinc-500">Renda base</span>
-                  <span className="text-sm font-semibold text-zinc-950">
-                    {formatMoney(base, currency)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-zinc-500">Renda extra</span>
-                  <span className={`text-sm font-semibold ${totalExtraIncome > 0 ? "text-emerald-600" : "text-zinc-400"}`}>
-                    {formatMoney(totalExtraIncome, currency)}
+                  <span className="text-sm text-zinc-500">Renda planejada</span>
+                  <span className={`text-sm font-semibold ${totalIncome > 0 ? "text-zinc-950" : "text-zinc-400"}`}>
+                    {formatMoney(totalIncome, currency)}
                   </span>
                 </div>
               </div>
 
               <Separator className="bg-zinc-100" />
 
-              {/* Total disponível */}
               <div>
                 <p className="text-xs text-zinc-500">Disponível no mês</p>
-                <p className="mt-0.5 text-2xl font-bold text-zinc-950">
-                  {formatMoney(totalIncome, currency)}
-                </p>
+                <p className="mt-0.5 text-2xl font-bold text-zinc-950">{formatMoney(totalIncome, currency)}</p>
               </div>
 
               <Separator className="bg-zinc-100" />
 
-              {/* Comprometido */}
               <div className="grid gap-2.5">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-sm text-zinc-500">Total em grupos</span>
-                  <span className="text-sm font-semibold text-zinc-950">
-                    {formatMoney(totalExpenses, currency)}
-                  </span>
+                  <span className="text-sm font-semibold text-zinc-950">{formatMoney(totalExpenses, currency)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-sm text-zinc-500">Poupança</span>
@@ -1566,21 +1042,14 @@ export function ExpenseGroupsManager({
                   </span>
                 </div>
                 <Progress value={Math.min(committedPercentage, 100)} className="h-1.5" />
-                <p className="text-xs text-zinc-400">
-                  {formatPercent(committedPercentage)}% da renda comprometida
-                </p>
+                <p className="text-xs text-zinc-400">{formatPercent(committedPercentage)}% da renda comprometida</p>
               </div>
 
               <Separator className="bg-zinc-100" />
 
-              {/* Sobra */}
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-zinc-500">Sobra</span>
-                <span
-                  className={`text-sm font-bold ${
-                    remaining >= 0 ? "text-emerald-700" : "text-red-600"
-                  }`}
-                >
+                <span className={`text-sm font-bold ${remaining >= 0 ? "text-emerald-700" : "text-red-600"}`}>
                   {formatMoney(remaining, currency)}
                 </span>
               </div>
@@ -1592,113 +1061,74 @@ export function ExpenseGroupsManager({
       <Card>
         <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1.5">
-            <CardTitle>Entradas e poupanca do mes</CardTitle>
-            <CardDescription>
-              Ajustes mensais que aumentam a renda ou separam dinheiro para
-              guardar.
-            </CardDescription>
+            <CardTitle>Renda e poupanca do mes</CardTitle>
+            <CardDescription>Defina a renda esperada e separe dinheiro para guardar.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <SavingsAllocationDialog
-              savingsAllocation={savingsAllocation}
-              selectedMonth={selectedMonth}
-            />
-            <ExtraIncomeDialog selectedMonth={selectedMonth} />
+            <PlannedIncomeDialog plannedIncome={plannedIncome} selectedMonth={selectedMonth} />
+            <SavingsAllocationDialog savingsAllocation={savingsAllocation} selectedMonth={selectedMonth} />
           </div>
         </CardHeader>
-        <CardContent className="grid gap-6">
-            <div className="grid gap-3 rounded-md border p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <PiggyBank className="mt-0.5 size-4 text-emerald-700" />
-                  <div>
-                    <p className="font-medium">Poupanca</p>
-                    <p className="text-sm text-muted-foreground">
-                      {savingsAllocation?.description ||
-                        "Valor separado da sobra planejada deste mes."}
-                    </p>
-                    {savingsAllocation?.repeatMonths && (
+        <CardContent className="grid gap-4">
+          <div className="grid gap-3 rounded-md border p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <HandCoins className="mt-0.5 size-4 text-emerald-700" />
+                <div>
+                  <p className="font-medium">Renda planejada</p>
+                  <p className="text-sm text-muted-foreground">
+                    {plannedIncome?.description || "Renda esperada para este mes."}
+                  </p>
+                  {plannedIncome?.repeatMonths && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">{formatRepeatMonthsLabel(plannedIncome.repeatMonths)}</p>
+                  )}
+                  {plannedIncome?.affectsFutureMonths &&
+                    !plannedIncome.repeatMonths &&
+                    plannedIncome.referenceMonth !== selectedMonth && (
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {formatRepeatMonthsLabel(savingsAllocation.repeatMonths)}
+                        Recorrente desde {formatReferenceMonth(plannedIncome.referenceMonth)}
                       </p>
                     )}
-                    {savingsAllocation?.affectsFutureMonths &&
-                      !savingsAllocation.repeatMonths &&
-                      savingsAllocation.referenceMonth !== selectedMonth && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          Recorrente desde{" "}
-                          {formatReferenceMonth(savingsAllocation.referenceMonth)}
-                        </p>
-                      )}
-                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-emerald-700">
-                    {formatMoney(savingsAmount, currency)}
-                  </span>
-                  {savingsAllocation ? (
-                    <DeleteSavingsAllocationButton savingsId={savingsAllocation.id} />
-                  ) : null}
-                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`font-medium ${totalIncome > 0 ? "text-emerald-700" : "text-zinc-400"}`}>
+                  {formatMoney(totalIncome, currency)}
+                </span>
+                {plannedIncome && <DeletePlannedIncomeButton incomeId={plannedIncome.id} />}
               </div>
             </div>
+          </div>
 
-            {extraIncomes.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Entrada</TableHead>
-                    <TableHead>Valor</TableHead>
-                    <TableHead className="w-24 text-right">Acoes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {extraIncomes.map((income) => (
-                    <TableRow key={income.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <HandCoins className="size-4 text-emerald-700" />
-                          <div>
-                            <p className="font-medium">{income.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {income.description || "Sem descricao"}
-                            </p>
-                            {income.receivedDay != null && (
-                              <p className="text-xs text-muted-foreground">
-                                Recebido no dia {income.receivedDay}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium text-emerald-700">
-                        {formatMoney(income.amount, currency)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-2">
-                          <ExtraIncomeDialog
-                            income={income}
-                            selectedMonth={selectedMonth}
-                          />
-                          <DeleteExtraIncomeButton income={income} />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="flex min-h-40 flex-col items-center justify-center gap-4 text-center">
-                <CalendarDays className="size-10 text-muted-foreground" />
+          <div className="grid gap-3 rounded-md border p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <PiggyBank className="mt-0.5 size-4 text-violet-700" />
                 <div>
-                  <h2 className="text-lg font-semibold">Sem renda extra</h2>
-                  <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                    Adicione bonus, freela, emprestimo recebido ou qualquer outra
-                    entrada pontual deste mes.
+                  <p className="font-medium">Poupanca</p>
+                  <p className="text-sm text-muted-foreground">
+                    {savingsAllocation?.description || "Valor separado da sobra planejada deste mes."}
                   </p>
+                  {savingsAllocation?.repeatMonths && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">{formatRepeatMonthsLabel(savingsAllocation.repeatMonths)}</p>
+                  )}
+                  {savingsAllocation?.affectsFutureMonths &&
+                    !savingsAllocation.repeatMonths &&
+                    savingsAllocation.referenceMonth !== selectedMonth && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Recorrente desde {formatReferenceMonth(savingsAllocation.referenceMonth)}
+                      </p>
+                    )}
                 </div>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <span className={`font-medium ${savingsAmount > 0 ? "text-violet-700" : "text-zinc-400"}`}>
+                  {formatMoney(savingsAmount, currency)}
+                </span>
+                {savingsAllocation ? <DeleteSavingsAllocationButton savingsId={savingsAllocation.id} /> : null}
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

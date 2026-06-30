@@ -5,7 +5,7 @@ import { dbConnect } from "@/lib/mongoose";
 import { User } from "@/lib/models/user";
 import { ExpenseGroup } from "@/lib/models/expense-group";
 import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
-import { ExtraIncome } from "@/lib/models/extra-income";
+import { PlannedIncome } from "@/lib/models/planned-income";
 import { SavingsAllocation } from "@/lib/models/savings-allocation";
 import { revalidatePath } from "next/cache";
 
@@ -14,7 +14,7 @@ export type ExpenseGroupActionState = {
   message?: string;
 };
 
-export type ExtraIncomeActionState = ExpenseGroupActionState;
+export type PlannedIncomeActionState = ExpenseGroupActionState;
 export type SavingsAllocationActionState = ExpenseGroupActionState;
 
 type ExpenseGroupInput = {
@@ -27,11 +27,11 @@ type ExpenseGroupInput = {
   description: string | null;
 };
 
-type ExtraIncomeInput = {
+type PlannedIncomeInput = {
   referenceMonth: string;
-  name: string;
   amount: number;
-  receivedDay: number | null;
+  affectsFutureMonths: boolean;
+  repeatMonths: string | null;
   description: string | null;
 };
 
@@ -89,27 +89,30 @@ function parseExpenseGroupInput(formData: FormData): ExpenseGroupInput | string 
   };
 }
 
-function parseExtraIncomeInput(formData: FormData): ExtraIncomeInput | string {
+function parsePlannedIncomeInput(formData: FormData): PlannedIncomeInput | string {
   const referenceMonth = String(formData.get("referenceMonth") ?? "").trim();
-  const name = String(formData.get("name") ?? "").trim();
   const amountText = String(formData.get("amount") ?? "").trim().replace(",", ".");
   const amount = Number(amountText);
   const description = String(formData.get("description") ?? "").trim() || null;
-  const receivedDayText = String(formData.get("receivedDay") ?? "").trim();
-  const receivedDay = receivedDayText ? Number(receivedDayText) : null;
+  const affectsFutureMonths = String(formData.get("affectsFutureMonths") ?? "") === "on";
 
   if (!/^\d{4}-\d{2}$/.test(referenceMonth)) return "Escolha um mes de referencia valido.";
-  if (name.length < 2) return "Informe um nome com pelo menos 2 caracteres.";
-  if (!amountText || !Number.isFinite(amount) || amount < 0) return "Informe um valor extra valido.";
-  if (receivedDay !== null && (!Number.isInteger(receivedDay) || receivedDay < 1 || receivedDay > 31)) {
-    return "Informe um dia de recebimento valido (1-31).";
+  if (!amountText || !Number.isFinite(amount) || amount < 0) return "Informe um valor de renda valido.";
+
+  let repeatMonths: string | null = null;
+  if (affectsFutureMonths) {
+    const raw = formData.getAll("repeatMonth").map((v) => Number(String(v)));
+    const valid = [...new Set(raw.filter((n) => n >= 1 && n <= 12))].sort((a, b) => a - b);
+    if (valid.length > 0 && valid.length < 12) {
+      repeatMonths = valid.join(",");
+    }
   }
 
   return {
     referenceMonth,
-    name,
     amount: Number(amount.toFixed(2)),
-    receivedDay,
+    affectsFutureMonths,
+    repeatMonths,
     description,
   };
 }
@@ -274,61 +277,50 @@ export async function deleteExpenseGroup(id: string): Promise<ExpenseGroupAction
   return { status: "success", message: "Grupo de despesa removido." };
 }
 
-export async function createExtraIncome(
-  _previousState: ExtraIncomeActionState,
+export async function savePlannedIncome(
+  _previousState: PlannedIncomeActionState,
   formData: FormData,
-): Promise<ExtraIncomeActionState> {
+): Promise<PlannedIncomeActionState> {
   const userId = await getCurrentUserId();
   if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
-  const input = parseExtraIncomeInput(formData);
-  if (typeof input === "string") return { status: "error", message: input };
-
-  await ExtraIncome.create({ userId, ...input });
-
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/groups");
-
-  return { status: "success", message: "Renda extra criada." };
-}
-
-export async function updateExtraIncome(
-  _previousState: ExtraIncomeActionState,
-  formData: FormData,
-): Promise<ExtraIncomeActionState> {
-  const userId = await getCurrentUserId();
-  if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
-
-  const id = String(formData.get("id") ?? "").trim();
-  const input = parseExtraIncomeInput(formData);
-
-  if (!id) return { status: "error", message: "Renda extra nao encontrada." };
+  const input = parsePlannedIncomeInput(formData);
   if (typeof input === "string") return { status: "error", message: input };
 
   await dbConnect();
-  const result = await ExtraIncome.updateOne({ _id: id, userId }, { $set: input });
-
-  if (result.matchedCount === 0) return { status: "error", message: "Renda extra nao encontrada." };
+  await PlannedIncome.findOneAndUpdate(
+    { userId, referenceMonth: input.referenceMonth },
+    {
+      $set: {
+        amount: input.amount,
+        affectsFutureMonths: input.affectsFutureMonths,
+        repeatMonths: input.repeatMonths,
+        description: input.description,
+      },
+      $setOnInsert: { userId, referenceMonth: input.referenceMonth },
+    },
+    { upsert: true, new: true },
+  );
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
 
-  return { status: "success", message: "Renda extra atualizada." };
+  return { status: "success", message: "Renda planejada do mes atualizada." };
 }
 
-export async function deleteExtraIncome(id: string): Promise<ExtraIncomeActionState> {
+export async function deletePlannedIncome(id: string): Promise<PlannedIncomeActionState> {
   const userId = await getCurrentUserId();
   if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   await dbConnect();
-  const result = await ExtraIncome.deleteOne({ _id: id, userId });
+  const result = await PlannedIncome.deleteOne({ _id: id, userId });
 
-  if (result.deletedCount === 0) return { status: "error", message: "Renda extra nao encontrada." };
+  if (result.deletedCount === 0) return { status: "error", message: "Renda planejada nao encontrada." };
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
 
-  return { status: "success", message: "Renda extra removida." };
+  return { status: "success", message: "Renda planejada removida." };
 }
 
 export async function saveSavingsAllocation(
