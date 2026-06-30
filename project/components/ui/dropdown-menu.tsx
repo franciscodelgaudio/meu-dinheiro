@@ -6,23 +6,6 @@ import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
-// Track if any scroll container is actively scrolling
-let scrolling = false
-let scrollTimer: ReturnType<typeof setTimeout>
-if (typeof window !== "undefined") {
-  window.addEventListener(
-    "scroll",
-    () => {
-      scrolling = true
-      clearTimeout(scrollTimer)
-      scrollTimer = setTimeout(() => {
-        scrolling = false
-      }, 150)
-    },
-    { passive: true, capture: true },
-  )
-}
-
 function DropdownMenu({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
@@ -30,55 +13,10 @@ function DropdownMenu({
 }
 
 function DropdownMenuTrigger({
-  onPointerDown,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
-  const handlePointerDown = React.useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (e.pointerType !== "touch") {
-        onPointerDown?.(e)
-        return
-      }
-
-      const element = e.currentTarget
-      const startY = e.clientY
-      // If the page was already scrolling when the finger landed, block the click
-      let shouldBlock = scrolling
-
-      const onMove = (ev: PointerEvent) => {
-        if (Math.abs(ev.clientY - startY) > 5) shouldBlock = true
-      }
-
-      const cleanup = () => {
-        document.removeEventListener("pointermove", onMove)
-        document.removeEventListener("pointerup", cleanup)
-        document.removeEventListener("pointercancel", cleanup)
-      }
-
-      const onClickCapture = (ev: MouseEvent) => {
-        cleanup()
-        if (shouldBlock) {
-          ev.stopPropagation()
-          ev.preventDefault()
-        }
-      }
-
-      document.addEventListener("pointermove", onMove, { passive: true })
-      document.addEventListener("pointerup", cleanup, { once: true })
-      document.addEventListener("pointercancel", cleanup, { once: true })
-      element.addEventListener("click", onClickCapture, { capture: true, once: true })
-
-      onPointerDown?.(e)
-    },
-    [onPointerDown],
-  )
-
   return (
-    <DropdownMenuPrimitive.Trigger
-      data-slot="dropdown-menu-trigger"
-      onPointerDown={handlePointerDown}
-      {...props}
-    />
+    <DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />
   )
 }
 
