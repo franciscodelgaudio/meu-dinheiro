@@ -64,6 +64,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 const initialState: ExpenseActionState = {};
 const initialQuickState: QuickExpenseActionState = {};
@@ -111,6 +120,8 @@ type ExpensesManagerProps = {
   commonExpenses: CommonExpenseTemplate[];
   selectedMonth: string;
   currency: string;
+  totalExpenses: number;
+  currentPage: number;
 };
 
 
@@ -854,6 +865,8 @@ function DeleteExpenseButton({ expense }: { expense: ExpenseView }) {
   );
 }
 
+const EXPENSES_PER_PAGE = 10;
+
 export function ExpensesManager({
   groups,
   groupTotals,
@@ -861,13 +874,45 @@ export function ExpensesManager({
   commonExpenses,
   selectedMonth,
   currency,
+  totalExpenses,
+  currentPage,
 }: ExpensesManagerProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const visibleGroupTotals = groupTotals.filter(
+    (g) => Number(g.monthlyAmount) > 0 || Number(g.spentAmount) > 0,
+  );
+
+  const totalPages = Math.ceil(totalExpenses / EXPENSES_PER_PAGE);
+
+  function handlePageChange(newPage: number) {
+    const params = new URLSearchParams();
+    params.set("month", selectedMonth);
+    if (newPage > 1) params.set("page", String(newPage));
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
+  const pageItems = useMemo(() => {
+    const items: (number | "ellipsis")[] = [];
+    let prev: number | undefined;
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+        if (prev !== undefined && i - prev > 1) items.push("ellipsis");
+        items.push(i);
+        prev = i;
+      }
+    }
+
+    return items;
+  }, [currentPage, totalPages]);
 
   return (
     <div className="grid gap-4 sm:gap-6">
       <QuickExpenseCapture groups={groups} selectedMonth={selectedMonth} />
 
-      <div className="grid gap-4 sm:gap-6">
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[1fr_380px]">
         <Card>
           <CardHeader className="gap-0 pb-0">
             <div className="flex items-start justify-between gap-3 pb-3">
@@ -904,7 +949,8 @@ export function ExpensesManager({
                 </div>
               </div>
             ) : expenses.length > 0 ? (
-              <Table>
+              <>
+                <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="hidden sm:table-cell">Data</TableHead>
@@ -982,6 +1028,39 @@ export function ExpensesManager({
                     ))}
                   </TableBody>
                 </Table>
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between border-t px-6 py-3 text-sm text-zinc-500">
+                    <span>
+                      {(currentPage - 1) * EXPENSES_PER_PAGE + 1}–
+                      {Math.min(currentPage * EXPENSES_PER_PAGE, totalExpenses)} de{" "}
+                      {totalExpenses}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        aria-label="Página anterior"
+                      >
+                        <ChevronLeft className="size-4" />
+                      </Button>
+                      <span className="px-2">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        aria-label="Próxima página"
+                      >
+                        <ChevronRight className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-6 pb-6 pt-4 text-center sm:p-0">
                 <ReceiptText className="size-10 text-muted-foreground" />
@@ -998,74 +1077,51 @@ export function ExpensesManager({
             )}
           </CardContent>
         </Card>
+
+        {visibleGroupTotals.length > 0 && (
+          <Card className="h-fit border-zinc-200 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-zinc-800">Uso por grupo</CardTitle>
+              <CardDescription className="capitalize">{formatReferenceMonth(selectedMonth)}</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              {visibleGroupTotals.map((group) => {
+                const planned = Number(group.monthlyAmount);
+                const spent = Number(group.spentAmount);
+                const percentage = getPercentage(spent, planned);
+                const isOver = percentage > 100;
+
+                return (
+                  <div key={group.id} className="grid gap-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} />
+                        <span className="truncate text-xs font-medium text-zinc-700">{group.name}</span>
+                      </div>
+                      <Badge variant={isOver ? "destructive" : "secondary"} className="shrink-0 text-xs">
+                        {new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(percentage)}%
+                      </Badge>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-100">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(percentage, 100)}%`,
+                          backgroundColor: isOver ? "#dc2626" : group.color,
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-zinc-400">{formatMoney(spent, currency)}</span>
+                      <span className="text-xs text-zinc-400">de {formatMoney(planned, currency)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
       </div>
-
-      {groupTotals.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Uso por grupo</CardTitle>
-            <CardDescription>
-              Comparacao entre o valor planejado e o que ja foi registrado.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0 sm:p-6 sm:pt-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Grupo</TableHead>
-                  <TableHead className="hidden sm:table-cell text-right">Planejado</TableHead>
-                  <TableHead className="text-right">Gasto</TableHead>
-                  <TableHead className="hidden sm:table-cell text-right">Restante</TableHead>
-                  <TableHead className="w-16 text-right sm:w-20">%</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {groupTotals.filter((g) => Number(g.monthlyAmount) > 0 || Number(g.spentAmount) > 0).map((group) => {
-                  const planned = Number(group.monthlyAmount);
-                  const spent = Number(group.spentAmount);
-                  const groupRemaining = planned - spent;
-                  const percentage = getPercentage(spent, planned);
-
-                  return (
-                    <TableRow key={group.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="size-2.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: group.color }}
-                          />
-                          <div>
-                            <p className="font-medium">{group.name}</p>
-                            <p className="text-xs text-muted-foreground sm:hidden">
-                              {formatMoney(planned, currency)} planejado
-                            </p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-muted-foreground">
-                        {formatMoney(planned, currency)}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap font-medium text-red-700">
-                        {formatMoney(spent, currency)}
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell text-right whitespace-nowrap">
-                        <span className={groupRemaining < 0 ? "font-medium text-red-700" : "font-medium text-emerald-700"}>
-                          {formatMoney(groupRemaining, currency)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant={percentage > 100 ? "destructive" : "secondary"}>
-                          {new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(percentage)}%
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      ) : null}
     </div>
   );
 }

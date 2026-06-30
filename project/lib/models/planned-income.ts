@@ -22,3 +22,7 @@ plannedIncomeSchema.index({ userId: 1, referenceMonth: 1 });
 export const PlannedIncome =
   mongoose.models.PlannedIncome ??
   mongoose.model("PlannedIncome", plannedIncomeSchema, "plannedIncomes");
+
+// Drop the old unique index that previously existed on userId+referenceMonth.
+// Multiple planned incomes per month are now allowed.
+PlannedIncome.collection.dropIndex("userId_1_referenceMonth_1").catch(() => {});

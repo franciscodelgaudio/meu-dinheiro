@@ -11,9 +11,12 @@ import { redirect } from "next/navigation";
 import { ExpensesManager } from "./expenses-manager";
 import { getPaydayMonthRange, getCalendarMonth, getEffectiveCurrentMonth } from "@/lib/date-utils";
 
+const EXPENSES_PER_PAGE = 10;
+
 type ExpensesPageProps = {
   searchParams?: Promise<{
     month?: string | string[];
+    page?: string | string[];
   }>;
 };
 
@@ -94,6 +97,9 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     financeProfile?.paydayStart ?? null,
     incomeReceipt !== null,
   );
+
+  const rawPage = Array.isArray(params?.page) ? params.page[0] : params?.page;
+  const currentPage = Math.max(1, parseInt(rawPage ?? "1", 10) || 1);
   const monthRange = getPaydayMonthRange(selectedMonth, financeProfile?.paydayStart ?? null);
   const expenseGroups = await ExpenseGroup.find({
     userId,
@@ -106,21 +112,27 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     .lean<ExpenseGroupLean[]>();
 
   const expenseGroupIds = expenseGroups.map((group) => group._id.toString());
-  const [expenseGroupOverrides, expenses] = await Promise.all([
+  const expenseMatchFilter = {
+    userId,
+    spentAt: { $gte: monthRange.start, $lt: monthRange.end },
+  };
+
+  const [expenseGroupOverrides, expenses, totalExpenses, groupSpentAggregation] = await Promise.all([
     ExpenseGroupOverride.find({
       userId,
       referenceMonth: selectedMonth,
       expenseGroupId: { $in: expenseGroupIds },
     }).lean<ExpenseGroupOverrideLean[]>(),
-    Expense.find({
-      userId,
-      spentAt: {
-        $gte: monthRange.start,
-        $lt: monthRange.end,
-      },
-    })
+    Expense.find(expenseMatchFilter)
       .sort({ spentAt: -1, createdAt: -1 })
+      .skip((currentPage - 1) * EXPENSES_PER_PAGE)
+      .limit(EXPENSES_PER_PAGE)
       .lean<ExpenseLean[]>(),
+    Expense.countDocuments(expenseMatchFilter),
+    Expense.aggregate<{ _id: string; spentAmount: number }>([
+      { $match: expenseMatchFilter },
+      { $group: { _id: "$expenseGroupId", spentAmount: { $sum: "$amount" } } },
+    ]),
   ]);
 
   const overrideByGroupId = new Map(
@@ -228,12 +240,13 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       installmentCount: expense.installmentCount,
     };
   });
+  const spentByGroupId = new Map(
+    groupSpentAggregation.map((item) => [item._id, item.spentAmount]),
+  );
+
   const groupTotals = groups.map((group) => ({
     ...group,
-    spentAmount: expenseItems
-      .filter((expense) => expense.expenseGroupId === group.id)
-      .reduce((total, expense) => total + Number(expense.amount), 0)
-      .toFixed(2),
+    spentAmount: (spentByGroupId.get(group.id) ?? 0).toFixed(2),
   }));
 
   return (
@@ -250,6 +263,8 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         commonExpenses={commonExpenses}
         selectedMonth={selectedMonth}
         currency={financeProfile?.currency ?? "BRL"}
+        totalExpenses={totalExpenses}
+        currentPage={currentPage}
       />
     </main>
   );

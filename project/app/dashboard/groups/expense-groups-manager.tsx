@@ -904,7 +904,7 @@ export function ExpenseGroupsManager({
 
   return (
     <div className="grid gap-4 sm:gap-6">
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[3fr_2fr]">
         {mode === "expenses" ? (
           <Card className="border-zinc-200 shadow-sm">
             <CardHeader className="gap-0 pb-0">
@@ -1012,17 +1012,6 @@ export function ExpenseGroupsManager({
               <CardDescription className="capitalize">{formatReferenceMonth(selectedMonth)}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
-              <div className="grid gap-2">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-zinc-500">Renda planejada</span>
-                  <span className={`text-sm font-semibold ${totalIncome > 0 ? "text-zinc-950" : "text-zinc-400"}`}>
-                    {formatMoney(totalIncome, currency)}
-                  </span>
-                </div>
-              </div>
-
-              <Separator className="bg-zinc-100" />
-
               <div>
                 <p className="text-xs text-zinc-500">Disponível no mês</p>
                 <p className="mt-0.5 text-2xl font-bold text-zinc-950">{formatMoney(totalIncome, currency)}</p>
@@ -1041,8 +1030,6 @@ export function ExpenseGroupsManager({
                     {formatMoney(savingsAmount, currency)}
                   </span>
                 </div>
-                <Progress value={Math.min(committedPercentage, 100)} className="h-1.5" />
-                <p className="text-xs text-zinc-400">{formatPercent(committedPercentage)}% da renda comprometida</p>
               </div>
 
               <Separator className="bg-zinc-100" />
@@ -1055,94 +1042,96 @@ export function ExpenseGroupsManager({
               </div>
             </CardContent>
           </Card>
-        </div>
-      </div>
 
-      <Card>
-        <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1.5">
-            <CardTitle>Renda e poupanca do mes</CardTitle>
-            <CardDescription>Adicione fontes de renda e separe dinheiro para guardar.</CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <AddIncomeDialog selectedMonth={selectedMonth} />
-            <SavingsAllocationDialog savingsAllocation={savingsAllocation} selectedMonth={selectedMonth} />
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          <div className="grid gap-2 rounded-md border p-4">
-            {plannedIncomes.length === 0 ? (
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <HandCoins className="size-4 shrink-0" />
-                <span>Nenhuma renda adicionada para este mes.</span>
-              </div>
-            ) : (
-              <>
-                {plannedIncomes.map((income) => (
-                  <div key={income.id} className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <HandCoins className="mt-0.5 size-4 shrink-0 text-emerald-700" />
-                      <div>
-                        <p className="font-medium">{income.description || "Renda planejada"}</p>
-                        {income.repeatMonths && (
-                          <p className="mt-0.5 text-xs text-muted-foreground">{formatRepeatMonthsLabel(income.repeatMonths)}</p>
-                        )}
-                        {income.affectsFutureMonths &&
-                          !income.repeatMonths &&
-                          income.referenceMonth !== selectedMonth && (
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              Recorrente desde {formatReferenceMonth(income.referenceMonth)}
-                            </p>
-                          )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-emerald-700">{formatMoney(income.amount, currency)}</span>
-                      <DeletePlannedIncomeButton incomeId={income.id} />
-                    </div>
-                  </div>
-                ))}
-                {plannedIncomes.length > 1 && (
-                  <div className="flex items-center justify-between border-t pt-2">
-                    <span className="text-sm font-medium text-zinc-700">Total</span>
-                    <span className="font-semibold text-emerald-700">{formatMoney(totalIncome, currency)}</span>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="grid gap-3 rounded-md border p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <PiggyBank className="mt-0.5 size-4 text-violet-700" />
-                <div>
-                  <p className="font-medium">Poupanca</p>
-                  <p className="text-sm text-muted-foreground">
-                    {savingsAllocation?.description || "Valor separado da sobra planejada deste mes."}
-                  </p>
-                  {savingsAllocation?.repeatMonths && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">{formatRepeatMonthsLabel(savingsAllocation.repeatMonths)}</p>
-                  )}
-                  {savingsAllocation?.affectsFutureMonths &&
-                    !savingsAllocation.repeatMonths &&
-                    savingsAllocation.referenceMonth !== selectedMonth && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Recorrente desde {formatReferenceMonth(savingsAllocation.referenceMonth)}
-                      </p>
-                    )}
+          <Card className="border-zinc-200 shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-0.5">
+                  <CardTitle className="text-sm font-semibold text-zinc-800">Renda e poupança</CardTitle>
+                  <CardDescription className="capitalize">{formatReferenceMonth(selectedMonth)}</CardDescription>
+                </div>
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  <AddIncomeDialog selectedMonth={selectedMonth} />
+                  <SavingsAllocationDialog savingsAllocation={savingsAllocation} selectedMonth={selectedMonth} />
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className={`font-medium ${savingsAmount > 0 ? "text-violet-700" : "text-zinc-400"}`}>
-                  {formatMoney(savingsAmount, currency)}
-                </span>
-                {savingsAllocation ? <DeleteSavingsAllocationButton savingsId={savingsAllocation.id} /> : null}
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <div className="grid gap-2 rounded-md border border-zinc-100 bg-zinc-50 p-3">
+                {plannedIncomes.length === 0 ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <HandCoins className="size-4 shrink-0" />
+                    <span>Nenhuma renda adicionada.</span>
+                  </div>
+                ) : (
+                  <>
+                    {plannedIncomes.map((income) => (
+                      <div key={income.id} className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2">
+                          <HandCoins className="mt-0.5 size-3.5 shrink-0 text-emerald-700" />
+                          <div>
+                            <p className="text-sm font-medium">{income.description || "Renda planejada"}</p>
+                            {income.repeatMonths && (
+                              <p className="mt-0.5 text-xs text-muted-foreground">{formatRepeatMonthsLabel(income.repeatMonths)}</p>
+                            )}
+                            {income.affectsFutureMonths &&
+                              !income.repeatMonths &&
+                              income.referenceMonth !== selectedMonth && (
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  Recorrente desde {formatReferenceMonth(income.referenceMonth)}
+                                </p>
+                              )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-medium text-emerald-700">{formatMoney(income.amount, currency)}</span>
+                          <DeletePlannedIncomeButton incomeId={income.id} />
+                        </div>
+                      </div>
+                    ))}
+                    {plannedIncomes.length > 1 && (
+                      <div className="flex items-center justify-between border-t border-zinc-200 pt-2">
+                        <span className="text-xs font-medium text-zinc-600">Total</span>
+                        <span className="text-sm font-semibold text-emerald-700">{formatMoney(totalIncome, currency)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+
+              <div className="grid gap-2 rounded-md border border-zinc-100 bg-zinc-50 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2">
+                    <PiggyBank className="mt-0.5 size-3.5 text-violet-700" />
+                    <div>
+                      <p className="text-sm font-medium">Poupança</p>
+                      <p className="text-xs text-muted-foreground">
+                        {savingsAllocation?.description || "Sobra planejada separada."}
+                      </p>
+                      {savingsAllocation?.repeatMonths && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">{formatRepeatMonthsLabel(savingsAllocation.repeatMonths)}</p>
+                      )}
+                      {savingsAllocation?.affectsFutureMonths &&
+                        !savingsAllocation.repeatMonths &&
+                        savingsAllocation.referenceMonth !== selectedMonth && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            Recorrente desde {formatReferenceMonth(savingsAllocation.referenceMonth)}
+                          </p>
+                        )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-sm font-medium ${savingsAmount > 0 ? "text-violet-700" : "text-zinc-400"}`}>
+                      {formatMoney(savingsAmount, currency)}
+                    </span>
+                    {savingsAllocation ? <DeleteSavingsAllocationButton savingsId={savingsAllocation.id} /> : null}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

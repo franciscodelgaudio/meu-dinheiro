@@ -228,7 +228,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       );
 
       const totalCommitments = totalExpenses + savings;
-      const remaining = totalIncome - totalCommitments;
+      const remaining = Math.round((totalIncome - totalCommitments) * 100) / 100;
 
       return {
         month,
