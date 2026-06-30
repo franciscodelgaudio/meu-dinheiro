@@ -6,6 +6,23 @@ import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
+// Track if any scroll container is actively scrolling
+let scrolling = false
+let scrollTimer: ReturnType<typeof setTimeout>
+if (typeof window !== "undefined") {
+  window.addEventListener(
+    "scroll",
+    () => {
+      scrolling = true
+      clearTimeout(scrollTimer)
+      scrollTimer = setTimeout(() => {
+        scrolling = false
+      }, 150)
+    },
+    { passive: true, capture: true },
+  )
+}
+
 function DropdownMenu({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
@@ -25,10 +42,11 @@ function DropdownMenuTrigger({
 
       const element = e.currentTarget
       const startY = e.clientY
-      let hasMoved = false
+      // If the page was already scrolling when the finger landed, block the click
+      let shouldBlock = scrolling
 
       const onMove = (ev: PointerEvent) => {
-        if (Math.abs(ev.clientY - startY) > 8) hasMoved = true
+        if (Math.abs(ev.clientY - startY) > 5) shouldBlock = true
       }
 
       const cleanup = () => {
@@ -39,7 +57,7 @@ function DropdownMenuTrigger({
 
       const onClickCapture = (ev: MouseEvent) => {
         cleanup()
-        if (hasMoved) {
+        if (shouldBlock) {
           ev.stopPropagation()
           ev.preventDefault()
         }
