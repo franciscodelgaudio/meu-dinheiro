@@ -92,6 +92,18 @@ function findActiveEntry<
   );
 }
 
+function findAllActiveEntries<
+  T extends { referenceMonth: string; affectsFutureMonths: boolean; repeatMonths: string | null },
+>(entries: T[], targetMonth: string): T[] {
+  return entries.filter(
+    (e) =>
+      e.referenceMonth === targetMonth ||
+      (e.affectsFutureMonths &&
+        e.referenceMonth < targetMonth &&
+        isActiveInMonth(e.repeatMonths, targetMonth)),
+  );
+}
+
 function normalizeReferenceMonth(
   value: string | string[] | undefined,
   paydayStart: number | null,
@@ -208,8 +220,8 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
       if (totalExpenses === 0) return null;
 
-      const plannedIncomeForMonth = findActiveEntry(yearPlannedIncomes, month);
-      const totalIncome = Number(plannedIncomeForMonth?.amount ?? 0);
+      const activePlannedIncomes = findAllActiveEntries(yearPlannedIncomes, month);
+      const totalIncome = activePlannedIncomes.reduce((sum, e) => sum + Number(e.amount), 0);
 
       const savings = Number(
         findActiveEntry(yearSavings, month)?.amount ?? 0,
@@ -271,7 +283,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     expenseGroupOverrides.map((override) => [override.expenseGroupId, override]),
   );
 
-  const plannedIncomeForMonth = findActiveEntry(plannedIncomeEntries, selectedMonth);
+  const plannedIncomesForMonth = findAllActiveEntries(plannedIncomeEntries, selectedMonth);
   const savingsAllocation = findActiveEntry(savingsEntries, selectedMonth);
 
   const activeExpenseGroups = expenseGroups.filter(
@@ -299,17 +311,15 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     };
   });
 
-  const plannedIncome = plannedIncomeForMonth
-    ? {
-        id: plannedIncomeForMonth._id.toString(),
-        referenceMonth: plannedIncomeForMonth.referenceMonth,
-        amount: plannedIncomeForMonth.amount.toString(),
-        affectsFutureMonths: plannedIncomeForMonth.affectsFutureMonths,
-        repeatMonths: plannedIncomeForMonth.repeatMonths,
-        description: plannedIncomeForMonth.description,
-        updatedAt: plannedIncomeForMonth.updatedAt.toISOString(),
-      }
-    : null;
+  const plannedIncomes = plannedIncomesForMonth.map((e) => ({
+    id: e._id.toString(),
+    referenceMonth: e.referenceMonth,
+    amount: e.amount.toString(),
+    affectsFutureMonths: e.affectsFutureMonths,
+    repeatMonths: e.repeatMonths,
+    description: e.description,
+    updatedAt: e.updatedAt.toISOString(),
+  }));
 
   const savings = savingsAllocation
     ? {
@@ -336,7 +346,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
       <ExpenseGroupsManager
         groups={groups}
-        plannedIncome={plannedIncome}
+        plannedIncomes={plannedIncomes}
         savingsAllocation={savings}
         selectedMonth={selectedMonth}
         currency={financeProfile?.currency ?? "BRL"}

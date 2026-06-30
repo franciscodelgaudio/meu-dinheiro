@@ -209,15 +209,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const currency = financeProfile?.currency ?? "BRL";
   const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency });
 
-  const plannedIncomeForMonth = plannedIncomeEntries.find((e) => e.referenceMonth === selectedMonth) ??
-    plannedIncomeEntries.find((e) => {
+  const totalIncome = plannedIncomeEntries
+    .filter((e) => {
+      if (e.referenceMonth === selectedMonth) return true;
       if (!e.affectsFutureMonths) return false;
       if (e.referenceMonth >= selectedMonth) return false;
       if (!e.repeatMonths) return true;
       const monthNum = Number(selectedMonth.split("-")[1]);
       return e.repeatMonths.split(",").map(Number).includes(monthNum);
-    }) ?? null;
-  const totalIncome = Number(plannedIncomeForMonth?.amount ?? 0);
+    })
+    .reduce((sum, e) => sum + Number(e.amount), 0);
   const totalExpenses = expenseGroups.reduce(
     (t, g) => t + Number(overrideByGroupId.get(g._id.toString())?.monthlyAmount ?? g.monthlyAmount),
     0,

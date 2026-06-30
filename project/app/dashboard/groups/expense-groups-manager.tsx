@@ -19,11 +19,11 @@ import {
 import { toast } from "sonner";
 import {
   createExpenseGroup,
+  createPlannedIncome,
   deleteExpenseGroup,
   deletePlannedIncome,
   deleteSavingsAllocation,
   type ExpenseGroupActionState,
-  savePlannedIncome,
   saveSavingsAllocation,
   updateExpenseGroup,
 } from "./actions";
@@ -112,7 +112,7 @@ export type YearMonthSummary = {
 
 type ExpenseGroupsManagerProps = {
   groups: ExpenseGroupView[];
-  plannedIncome: PlannedIncomeView | null;
+  plannedIncomes: PlannedIncomeView[];
   savingsAllocation: SavingsAllocationView | null;
   selectedMonth: string;
   currency: string;
@@ -538,17 +538,17 @@ function ExpenseGroupDialog({ group, selectedMonth }: { group?: ExpenseGroupView
   );
 }
 
-function PlannedIncomeDialog({ plannedIncome, selectedMonth }: { plannedIncome: PlannedIncomeView | null; selectedMonth: string }) {
+function AddIncomeDialog({ selectedMonth }: { selectedMonth: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [affectsFutureMonths, setAffectsFutureMonths] = useState(plannedIncome?.affectsFutureMonths ?? false);
-  const [selectedRepeatMonths, setSelectedRepeatMonths] = useState<number[]>(parseRepeatMonthsToArray(plannedIncome?.repeatMonths ?? null));
-  const [state, formAction, isPending] = useActionState(savePlannedIncome, initialState);
+  const [affectsFutureMonths, setAffectsFutureMonths] = useState(false);
+  const [selectedRepeatMonths, setSelectedRepeatMonths] = useState<number[]>(ALL_MONTHS);
+  const [state, formAction, isPending] = useActionState(createPlannedIncome, initialState);
 
   function handleOpenChange(next: boolean) {
     if (next) {
-      setAffectsFutureMonths(plannedIncome?.affectsFutureMonths ?? false);
-      setSelectedRepeatMonths(parseRepeatMonthsToArray(plannedIncome?.repeatMonths ?? null));
+      setAffectsFutureMonths(false);
+      setSelectedRepeatMonths(ALL_MONTHS);
     }
     setOpen(next);
   }
@@ -566,12 +566,12 @@ function PlannedIncomeDialog({ plannedIncome, selectedMonth }: { plannedIncome: 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline"><HandCoins />Renda</Button>
+        <Button variant="outline"><Plus />Adicionar renda</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Renda planejada do mes</DialogTitle>
-          <DialogDescription>Defina a renda esperada para {formatReferenceMonth(selectedMonth)}.</DialogDescription>
+          <DialogTitle>Adicionar renda</DialogTitle>
+          <DialogDescription>Registre uma fonte de renda para {formatReferenceMonth(selectedMonth)}.</DialogDescription>
         </DialogHeader>
         <form action={formAction} className="grid gap-5">
           <input type="hidden" name="referenceMonth" value={selectedMonth} />
@@ -579,8 +579,13 @@ function PlannedIncomeDialog({ plannedIncome, selectedMonth }: { plannedIncome: 
           {affectsFutureMonths && selectedRepeatMonths.map((m) => <input key={m} type="hidden" name="repeatMonth" value={m} />)}
 
           <div className="grid gap-2">
-            <Label htmlFor="planned-income-amount">Valor esperado</Label>
-            <Input id="planned-income-amount" name="amount" type="number" min="0" step="0.01" defaultValue={plannedIncome?.amount ?? "0.00"} required />
+            <Label htmlFor="planned-income-description">Descricao</Label>
+            <Input id="planned-income-description" name="description" placeholder="Salario, freela, bonus..." />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="planned-income-amount">Valor</Label>
+            <Input id="planned-income-amount" name="amount" type="number" min="0" step="0.01" defaultValue="0.00" required />
           </div>
 
           <div className="grid gap-3">
@@ -598,14 +603,9 @@ function PlannedIncomeDialog({ plannedIncome, selectedMonth }: { plannedIncome: 
             {affectsFutureMonths && <MonthRepeatPicker selected={selectedRepeatMonths} onChange={setSelectedRepeatMonths} />}
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="planned-income-description">Descricao</Label>
-            <Textarea id="planned-income-description" name="description" defaultValue={plannedIncome?.description ?? ""} rows={3} placeholder="Salario, honorarios, receita recorrente..." />
-          </div>
-
           <DialogFooter>
             <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
-            <Button type="submit" disabled={isPending}>{isPending ? "Salvando..." : "Salvar"}</Button>
+            <Button type="submit" disabled={isPending}>{isPending ? "Salvando..." : "Adicionar"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -798,7 +798,7 @@ function sortGroups(groups: ExpenseGroupView[], field: SortField, dir: SortDir) 
 
 export function ExpenseGroupsManager({
   groups,
-  plannedIncome,
+  plannedIncomes,
   savingsAllocation,
   selectedMonth,
   currency,
@@ -811,7 +811,7 @@ export function ExpenseGroupsManager({
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [showZero, setShowZero] = useState(false);
 
-  const totalIncome = Number(plannedIncome?.amount ?? 0);
+  const totalIncome = plannedIncomes.reduce((sum, e) => sum + Number(e.amount), 0);
   const totalExpenses = groups.reduce((total, group) => total + Number(group.monthlyAmount), 0);
   const savingsAmount = Number(savingsAllocation?.amount ?? 0);
   const totalCommitments = totalExpenses + savingsAmount;
@@ -1062,42 +1062,54 @@ export function ExpenseGroupsManager({
         <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1.5">
             <CardTitle>Renda e poupanca do mes</CardTitle>
-            <CardDescription>Defina a renda esperada e separe dinheiro para guardar.</CardDescription>
+            <CardDescription>Adicione fontes de renda e separe dinheiro para guardar.</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <PlannedIncomeDialog plannedIncome={plannedIncome} selectedMonth={selectedMonth} />
+            <AddIncomeDialog selectedMonth={selectedMonth} />
             <SavingsAllocationDialog savingsAllocation={savingsAllocation} selectedMonth={selectedMonth} />
           </div>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <div className="grid gap-3 rounded-md border p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <HandCoins className="mt-0.5 size-4 text-emerald-700" />
-                <div>
-                  <p className="font-medium">Renda planejada</p>
-                  <p className="text-sm text-muted-foreground">
-                    {plannedIncome?.description || "Renda esperada para este mes."}
-                  </p>
-                  {plannedIncome?.repeatMonths && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">{formatRepeatMonthsLabel(plannedIncome.repeatMonths)}</p>
-                  )}
-                  {plannedIncome?.affectsFutureMonths &&
-                    !plannedIncome.repeatMonths &&
-                    plannedIncome.referenceMonth !== selectedMonth && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Recorrente desde {formatReferenceMonth(plannedIncome.referenceMonth)}
-                      </p>
-                    )}
-                </div>
+          <div className="grid gap-2 rounded-md border p-4">
+            {plannedIncomes.length === 0 ? (
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <HandCoins className="size-4 shrink-0" />
+                <span>Nenhuma renda adicionada para este mes.</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className={`font-medium ${totalIncome > 0 ? "text-emerald-700" : "text-zinc-400"}`}>
-                  {formatMoney(totalIncome, currency)}
-                </span>
-                {plannedIncome && <DeletePlannedIncomeButton incomeId={plannedIncome.id} />}
-              </div>
-            </div>
+            ) : (
+              <>
+                {plannedIncomes.map((income) => (
+                  <div key={income.id} className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <HandCoins className="mt-0.5 size-4 shrink-0 text-emerald-700" />
+                      <div>
+                        <p className="font-medium">{income.description || "Renda planejada"}</p>
+                        {income.repeatMonths && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">{formatRepeatMonthsLabel(income.repeatMonths)}</p>
+                        )}
+                        {income.affectsFutureMonths &&
+                          !income.repeatMonths &&
+                          income.referenceMonth !== selectedMonth && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              Recorrente desde {formatReferenceMonth(income.referenceMonth)}
+                            </p>
+                          )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-emerald-700">{formatMoney(income.amount, currency)}</span>
+                      <DeletePlannedIncomeButton incomeId={income.id} />
+                    </div>
+                  </div>
+                ))}
+                {plannedIncomes.length > 1 && (
+                  <div className="flex items-center justify-between border-t pt-2">
+                    <span className="text-sm font-medium text-zinc-700">Total</span>
+                    <span className="font-semibold text-emerald-700">{formatMoney(totalIncome, currency)}</span>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="grid gap-3 rounded-md border p-4">

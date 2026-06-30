@@ -277,7 +277,7 @@ export async function deleteExpenseGroup(id: string): Promise<ExpenseGroupAction
   return { status: "success", message: "Grupo de despesa removido." };
 }
 
-export async function savePlannedIncome(
+export async function createPlannedIncome(
   _previousState: PlannedIncomeActionState,
   formData: FormData,
 ): Promise<PlannedIncomeActionState> {
@@ -288,24 +288,12 @@ export async function savePlannedIncome(
   if (typeof input === "string") return { status: "error", message: input };
 
   await dbConnect();
-  await PlannedIncome.findOneAndUpdate(
-    { userId, referenceMonth: input.referenceMonth },
-    {
-      $set: {
-        amount: input.amount,
-        affectsFutureMonths: input.affectsFutureMonths,
-        repeatMonths: input.repeatMonths,
-        description: input.description,
-      },
-      $setOnInsert: { userId, referenceMonth: input.referenceMonth },
-    },
-    { upsert: true, new: true },
-  );
+  await PlannedIncome.create({ userId, ...input });
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/groups");
 
-  return { status: "success", message: "Renda planejada do mes atualizada." };
+  return { status: "success", message: "Renda adicionada ao mes." };
 }
 
 export async function deletePlannedIncome(id: string): Promise<PlannedIncomeActionState> {

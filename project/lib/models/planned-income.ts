@@ -17,7 +17,7 @@ const plannedIncomeSchema = new Schema(
   },
 );
 
-plannedIncomeSchema.index({ userId: 1, referenceMonth: 1 }, { unique: true });
+plannedIncomeSchema.index({ userId: 1, referenceMonth: 1 });
 
 export const PlannedIncome =
   mongoose.models.PlannedIncome ??
