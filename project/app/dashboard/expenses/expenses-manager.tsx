@@ -1029,35 +1029,42 @@ export function ExpensesManager({
                   </TableBody>
                 </Table>
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-between border-t px-6 py-3 text-sm text-zinc-500">
-                    <span>
-                      {(currentPage - 1) * EXPENSES_PER_PAGE + 1}–
-                      {Math.min(currentPage * EXPENSES_PER_PAGE, totalExpenses)} de{" "}
-                      {totalExpenses}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage === 1}
-                        aria-label="Página anterior"
-                      >
-                        <ChevronLeft className="size-4" />
-                      </Button>
-                      <span className="px-2">
-                        {currentPage} / {totalPages}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages}
-                        aria-label="Próxima página"
-                      >
-                        <ChevronRight className="size-4" />
-                      </Button>
-                    </div>
+                  <div className="border-t px-6 py-3">
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            onClick={() => handlePageChange(currentPage - 1)}
+                            aria-disabled={currentPage === 1}
+                            className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                        {pageItems.map((item, i) =>
+                          item === "ellipsis" ? (
+                            <PaginationItem key={`ellipsis-${i}`}>
+                              <PaginationEllipsis />
+                            </PaginationItem>
+                          ) : (
+                            <PaginationItem key={item}>
+                              <PaginationLink
+                                isActive={item === currentPage}
+                                onClick={() => handlePageChange(item)}
+                                className="cursor-pointer"
+                              >
+                                {item}
+                              </PaginationLink>
+                            </PaginationItem>
+                          ),
+                        )}
+                        <PaginationItem>
+                          <PaginationNext
+                            onClick={() => handlePageChange(currentPage + 1)}
+                            aria-disabled={currentPage === totalPages}
+                            className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
                   </div>
                 )}
               </>
