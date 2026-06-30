@@ -6,6 +6,7 @@ import {
   CalendarIcon,
   CheckCheck,
   CreditCard,
+  MoreHorizontal,
   Pencil,
   Plus,
   ReceiptText,
@@ -44,6 +45,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -106,19 +114,6 @@ function formatDateInput(value: string | null) {
   return value?.slice(0, 10) ?? "";
 }
 
-function formatDate(value: string | null) {
-  if (!value) {
-    return "Nao informado";
-  }
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(value));
-}
-
 function getTodayISO() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -155,12 +150,19 @@ function MonthSelector({ selectedMonth }: { selectedMonth: string }) {
 function DebtDialog({
   debt,
   selectedMonth,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: {
   debt?: DebtView;
   selectedMonth: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = isControlled ? controlledOpen! : uncontrolledOpen;
+  const setOpen = isControlled ? controlledOnOpenChange! : setUncontrolledOpen;
   const action = debt ? updateDebt : createDebt;
   const [state, formAction, isPending] = useActionState(action, initialState);
 
@@ -183,18 +185,20 @@ function DebtDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {debt ? (
-          <Button variant="outline" size="icon-sm" aria-label="Editar divida">
-            <Pencil />
-          </Button>
-        ) : (
-          <Button>
-            <Plus />
-            Nova divida
-          </Button>
-        )}
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          {debt ? (
+            <Button variant="outline" size="icon-sm" aria-label="Editar divida">
+              <Pencil />
+            </Button>
+          ) : (
+            <Button>
+              <Plus />
+              Nova divida
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{debt ? "Editar divida" : "Nova divida"}</DialogTitle>
@@ -328,9 +332,16 @@ function DebtDialog({
   );
 }
 
-function CreditCardPurchaseDialog({ debt }: { debt: DebtView }) {
+function CreditCardPurchaseDialog({
+  debt,
+  open,
+  onOpenChange,
+}: {
+  debt: DebtView;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [state, formAction, isPending] = useActionState(updateCreditCardPurchase, initialState);
 
   useEffect(() => {
@@ -341,7 +352,7 @@ function CreditCardPurchaseDialog({ debt }: { debt: DebtView }) {
     if (state.status === "success") {
       toast.success(state.message);
       window.setTimeout(() => {
-        setOpen(false);
+        onOpenChange(false);
         router.refresh();
       }, 0);
       return;
@@ -351,12 +362,7 @@ function CreditCardPurchaseDialog({ debt }: { debt: DebtView }) {
   }, [router, state]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="icon-sm" aria-label="Editar compra parcelada">
-          <Pencil />
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Editar compra parcelada</DialogTitle>
@@ -467,13 +473,16 @@ function PayInstallmentDialog({
   debt,
   currency,
   selectedMonth,
+  open,
+  onOpenChange,
 }: {
   debt: DebtView;
   currency: string;
   selectedMonth: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [state, formAction, isPending] = useActionState(payDebtInstallment, initialState);
 
   useEffect(() => {
@@ -484,7 +493,7 @@ function PayInstallmentDialog({
     if (state.status === "success") {
       toast.success(state.message);
       window.setTimeout(() => {
-        setOpen(false);
+        onOpenChange(false);
         router.refresh();
       }, 0);
       return;
@@ -496,12 +505,7 @@ function PayInstallmentDialog({
   const defaultDate = getDefaultPaymentDate(selectedMonth, debt.paymentDay);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="icon-sm" aria-label="Registrar pagamento">
-          <CheckCheck />
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Registrar pagamento</DialogTitle>
@@ -558,7 +562,15 @@ function PayInstallmentDialog({
   );
 }
 
-function UnpayButton({ debt }: { debt: DebtView }) {
+function UnpayDialog({
+  debt,
+  open,
+  onOpenChange,
+}: {
+  debt: DebtView;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -568,6 +580,7 @@ function UnpayButton({ debt }: { debt: DebtView }) {
 
       if (result.status === "success") {
         toast.success(result.message);
+        onOpenChange(false);
         router.refresh();
         return;
       }
@@ -577,22 +590,47 @@ function UnpayButton({ debt }: { debt: DebtView }) {
   }
 
   return (
-    <Button
-      variant="outline"
-      size="icon-sm"
-      aria-label="Desfazer pagamento"
-      onClick={handleUnpay}
-      disabled={isPending}
-    >
-      <RotateCcw />
-    </Button>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Desfazer pagamento?</DialogTitle>
+          <DialogDescription>
+            O pagamento de{" "}
+            <span className="font-medium text-foreground">{debt.name}</span>{" "}
+            sera desfeito e a parcela voltara a aparecer como pendente.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline">
+              Cancelar
+            </Button>
+          </DialogClose>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleUnpay}
+            disabled={isPending}
+          >
+            {isPending ? "Desfazendo..." : "Desfazer pagamento"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function DeleteDebtButton({ debt }: { debt: DebtView }) {
+function DeleteDebtDialog({
+  debt,
+  open,
+  onOpenChange,
+}: {
+  debt: DebtView;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [open, setOpen] = useState(false);
 
   function handleDelete() {
     startTransition(async () => {
@@ -601,7 +639,7 @@ function DeleteDebtButton({ debt }: { debt: DebtView }) {
       if (result.status === "success") {
         toast.success(result.message);
         router.refresh();
-        setOpen(false);
+        onOpenChange(false);
         return;
       }
 
@@ -610,12 +648,7 @@ function DeleteDebtButton({ debt }: { debt: DebtView }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="destructive" size="icon-sm" aria-label="Excluir divida">
-          <Trash2 />
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Excluir divida?</DialogTitle>
@@ -641,10 +674,17 @@ function DeleteDebtButton({ debt }: { debt: DebtView }) {
   );
 }
 
-function DeleteCreditCardButton({ debt }: { debt: DebtView }) {
+function DeleteCreditCardDialog({
+  debt,
+  open,
+  onOpenChange,
+}: {
+  debt: DebtView;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [open, setOpen] = useState(false);
 
   function handleDelete() {
     startTransition(async () => {
@@ -653,7 +693,7 @@ function DeleteCreditCardButton({ debt }: { debt: DebtView }) {
       if (result.status === "success") {
         toast.success(result.message);
         router.refresh();
-        setOpen(false);
+        onOpenChange(false);
         return;
       }
 
@@ -662,12 +702,7 @@ function DeleteCreditCardButton({ debt }: { debt: DebtView }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="destructive" size="icon-sm" aria-label="Excluir compra parcelada">
-          <Trash2 />
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Excluir compra parcelada?</DialogTitle>
@@ -690,6 +725,100 @@ function DeleteCreditCardButton({ debt }: { debt: DebtView }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ActionsDropdown({
+  debt,
+  currency,
+  selectedMonth,
+}: {
+  debt: DebtView;
+  currency: string;
+  selectedMonth: string;
+}) {
+  const [openDialog, setOpenDialog] = useState<"pay" | "unpay" | "edit" | "delete" | null>(null);
+  const close = () => setOpenDialog(null);
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon-sm" aria-label="Abrir acoes">
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {debt.installmentNumber !== null && !debt.isPaid ? (
+            <DropdownMenuItem onSelect={() => setOpenDialog("pay")}>
+              <CheckCheck className="mr-2 size-4" />
+              Registrar pagamento
+            </DropdownMenuItem>
+          ) : null}
+          {debt.isPaid && debt.paymentExpenseId ? (
+            <DropdownMenuItem onSelect={() => setOpenDialog("unpay")}>
+              <RotateCcw className="mr-2 size-4" />
+              Desfazer pagamento
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem onSelect={() => setOpenDialog("edit")}>
+            <Pencil className="mr-2 size-4" />
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => setOpenDialog("delete")}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="mr-2 size-4" />
+            Excluir
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <PayInstallmentDialog
+        debt={debt}
+        currency={currency}
+        selectedMonth={selectedMonth}
+        open={openDialog === "pay"}
+        onOpenChange={(o) => { if (!o) close(); }}
+      />
+
+      <UnpayDialog
+        debt={debt}
+        open={openDialog === "unpay"}
+        onOpenChange={(o) => { if (!o) close(); }}
+      />
+
+      {debt.kind === "debt" ? (
+        <>
+          <DebtDialog
+            debt={debt}
+            selectedMonth={selectedMonth}
+            open={openDialog === "edit"}
+            onOpenChange={(o) => { if (!o) close(); }}
+          />
+          <DeleteDebtDialog
+            debt={debt}
+            open={openDialog === "delete"}
+            onOpenChange={(o) => { if (!o) close(); }}
+          />
+        </>
+      ) : (
+        <>
+          <CreditCardPurchaseDialog
+            debt={debt}
+            open={openDialog === "edit"}
+            onOpenChange={(o) => { if (!o) close(); }}
+          />
+          <DeleteCreditCardDialog
+            debt={debt}
+            open={openDialog === "delete"}
+            onOpenChange={(o) => { if (!o) close(); }}
+          />
+        </>
+      )}
+    </>
   );
 }
 
@@ -742,7 +871,7 @@ export function DebtsManager({ debts, selectedMonth, currency }: DebtsManagerPro
                       <TableHead className="hidden sm:table-cell">Vencimento</TableHead>
                       <TableHead className="hidden sm:table-cell">Parcela</TableHead>
                       <TableHead>Valor no mes</TableHead>
-                      <TableHead className="w-28 text-right">Acoes</TableHead>
+                      <TableHead className="w-12 text-right">Acoes</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -820,28 +949,12 @@ export function DebtsManager({ debts, selectedMonth, currency }: DebtsManagerPro
                           {formatMoney(debt.installmentAmount, currency)}
                         </TableCell>
                         <TableCell>
-                          <div className="flex justify-end gap-2">
-                            {debt.installmentNumber !== null && !debt.isPaid ? (
-                              <PayInstallmentDialog
-                                debt={debt}
-                                currency={currency}
-                                selectedMonth={selectedMonth}
-                              />
-                            ) : null}
-                            {debt.isPaid && debt.paymentExpenseId ? (
-                              <UnpayButton debt={debt} />
-                            ) : null}
-                            {debt.kind === "debt" ? (
-                              <>
-                                <DebtDialog debt={debt} selectedMonth={selectedMonth} />
-                                <DeleteDebtButton debt={debt} />
-                              </>
-                            ) : (
-                              <>
-                                <CreditCardPurchaseDialog debt={debt} />
-                                <DeleteCreditCardButton debt={debt} />
-                              </>
-                            )}
+                          <div className="flex justify-end">
+                            <ActionsDropdown
+                              debt={debt}
+                              currency={currency}
+                              selectedMonth={selectedMonth}
+                            />
                           </div>
                         </TableCell>
                       </TableRow>
@@ -865,7 +978,8 @@ export function DebtsManager({ debts, selectedMonth, currency }: DebtsManagerPro
           </CardContent>
         </Card>
 
-        <Card className="self-start">
+        <div className="grid gap-4 sm:gap-6">
+        <Card>
           <CardHeader>
             <CardTitle>Resumo de compromissos</CardTitle>
             <CardDescription className="capitalize">
@@ -914,62 +1028,49 @@ export function DebtsManager({ debts, selectedMonth, currency }: DebtsManagerPro
             </div>
           </CardContent>
         </Card>
+
+        {debts.length > 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Progresso por compromisso</CardTitle>
+              <CardDescription>
+                Quanto ja foi pago antes do mes selecionado e quanto sobra depois.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0 sm:p-6 sm:pt-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Compromisso</TableHead>
+                    <TableHead className="text-right">Restante</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {debts.map((debt) => {
+                    const remaining = Number(debt.remainingAfterMonth);
+
+                    return (
+                      <TableRow key={debt.id}>
+                        <TableCell>
+                          <p className="font-medium">{debt.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {debt.source}
+                            {debt.paymentDay ? ` · vence dia ${debt.paymentDay}` : ""}
+                          </p>
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap font-medium">
+                          {formatMoney(remaining, currency)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        ) : null}
+        </div>
       </div>
-
-      {debts.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Progresso por compromisso</CardTitle>
-            <CardDescription>
-              Quanto ja foi pago antes do mes selecionado e quanto sobra depois.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0 sm:p-6 sm:pt-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Compromisso</TableHead>
-                  <TableHead className="hidden sm:table-cell text-right">Antes do mes</TableHead>
-                  <TableHead className="text-right">Restante</TableHead>
-                  <TableHead className="w-16 text-right sm:w-20">%</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {debts.map((debt) => {
-                  const paidBefore = Number(debt.paidBeforeMonth);
-                  const total = Number(debt.totalAmount);
-                  const remaining = Number(debt.remainingAfterMonth);
-                  const paidAfterThisMonth = total - remaining;
-                  const percentage = total > 0 ? (paidAfterThisMonth / total) * 100 : 0;
-
-                  return (
-                    <TableRow key={debt.id}>
-                      <TableCell>
-                        <p className="font-medium">{debt.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {debt.source}
-                          {debt.paymentDay ? ` · vence dia ${debt.paymentDay}` : ""}
-                        </p>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell text-right whitespace-nowrap text-muted-foreground">
-                        {formatMoney(paidBefore, currency)}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap font-medium">
-                        {formatMoney(remaining, currency)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant={percentage >= 100 ? "secondary" : "outline"}>
-                          {new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(percentage)}%
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      ) : null}
     </div>
   );
 }

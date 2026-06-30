@@ -11,7 +11,7 @@ import { User } from "@/lib/models/user";
 import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 
 import { AppSidebar } from "./app-sidebar";
-import { AiChat } from "./ai-chat";
+import { NavProgress } from "@/components/ui/nav-progress";
 
 export default async function DashboardLayout({
   children,
@@ -49,6 +49,7 @@ export default async function DashboardLayout({
 
   return (
     <SidebarProvider>
+      <NavProgress />
       <AppSidebar user={user} />
       <SidebarInset className="bg-muted/30">
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-zinc-200 bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/75">
@@ -60,7 +61,6 @@ export default async function DashboardLayout({
         </header>
         {children}
       </SidebarInset>
-      <AiChat />
     </SidebarProvider>
   );
 }
