@@ -47,6 +47,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -585,7 +586,7 @@ function AddIncomeDialog({ selectedMonth }: { selectedMonth: string }) {
 
           <div className="grid gap-2">
             <Label htmlFor="planned-income-amount">Valor</Label>
-            <Input id="planned-income-amount" name="amount" type="number" min="0" step="0.01" defaultValue="0.00" required />
+            <CurrencyInput id="planned-income-amount" name="amount" required />
           </div>
 
           <div className="grid gap-3">
@@ -752,14 +753,14 @@ function DeletePlannedIncomeButton({ incomeId }: { incomeId: string }) {
   );
 }
 
-function DeleteSavingsAllocationButton({ savingsId }: { savingsId: string }) {
+function DeleteSavingsAllocationButton({ referenceMonth }: { referenceMonth: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
 
   function handleDelete() {
     startTransition(async () => {
-      const result = await deleteSavingsAllocation(savingsId);
+      const result = await deleteSavingsAllocation(referenceMonth);
       if (result.status === "success") { toast.success(result.message); router.refresh(); setOpen(false); return; }
       toast.error(result.message ?? "Nao foi possivel remover a poupanca.");
     });
@@ -1124,7 +1125,7 @@ export function ExpenseGroupsManager({
                     <span className={`text-sm font-medium ${savingsAmount > 0 ? "text-violet-700" : "text-zinc-400"}`}>
                       {formatMoney(savingsAmount, currency)}
                     </span>
-                    {savingsAllocation ? <DeleteSavingsAllocationButton savingsId={savingsAllocation.id} /> : null}
+                    {savingsAllocation ? <DeleteSavingsAllocationButton referenceMonth={savingsAllocation.referenceMonth} /> : null}
                   </div>
                 </div>
               </div>

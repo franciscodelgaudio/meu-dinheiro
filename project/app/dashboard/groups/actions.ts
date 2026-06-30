@@ -155,6 +155,7 @@ export async function createExpenseGroup(
   const input = parseExpenseGroupInput(formData);
   if (typeof input === "string") return { status: "error", message: input };
 
+  await dbConnect();
   await ExpenseGroup.create({ userId, ...input });
 
   revalidatePath("/dashboard");
@@ -342,12 +343,12 @@ export async function saveSavingsAllocation(
   return { status: "success", message: "Poupanca do mes atualizada." };
 }
 
-export async function deleteSavingsAllocation(id: string): Promise<SavingsAllocationActionState> {
+export async function deleteSavingsAllocation(referenceMonth: string): Promise<SavingsAllocationActionState> {
   const userId = await getCurrentUserId();
   if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   await dbConnect();
-  const result = await SavingsAllocation.deleteOne({ _id: id, userId });
+  const result = await SavingsAllocation.deleteOne({ userId, referenceMonth });
 
   if (result.deletedCount === 0) return { status: "error", message: "Poupanca nao encontrada." };
 

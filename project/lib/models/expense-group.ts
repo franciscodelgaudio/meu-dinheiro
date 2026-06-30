@@ -21,6 +21,5 @@ const expenseGroupSchema = new Schema(
 
 expenseGroupSchema.index({ userId: 1, referenceMonth: 1 });
 
-export const ExpenseGroup =
-  mongoose.models.ExpenseGroup ??
-  mongoose.model("ExpenseGroup", expenseGroupSchema, "expenseGroups");
+delete mongoose.models.ExpenseGroup;
+export const ExpenseGroup = mongoose.model("ExpenseGroup", expenseGroupSchema, "expenseGroups");
