@@ -327,9 +327,9 @@ function QuickExpenseCapture({
                   ))}
                 </div>
               )}
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">
-                  <Label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-50">
+                  <Label className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-50">
                     <ImagePlus className="size-4 shrink-0" />
                     {selectedImages.length > 0 ? "Adicionar mais" : "Imagem"}
                     <Input
@@ -348,7 +348,7 @@ function QuickExpenseCapture({
                       }}
                     />
                   </Label>
-                  <Label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-50">
+                  <Label className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-colors hover:bg-zinc-50">
                     <Camera className="size-4 shrink-0" />
                     Tirar foto
                     <Input
@@ -368,7 +368,7 @@ function QuickExpenseCapture({
                     />
                   </Label>
                 </div>
-                <Button type="submit" disabled={isAnalyzing || groups.length === 0}>
+                <Button type="submit" className="w-full sm:w-auto" disabled={isAnalyzing || groups.length === 0}>
                   {isAnalyzing ? (
                     "Interpretando..."
                   ) : (
@@ -1055,7 +1055,7 @@ export function ExpensesManager({
               <CreditCardExpenseDialog selectedMonth={selectedMonth} />
             </div>
           </CardHeader>
-          <CardContent className="p-0 sm:p-6 sm:pt-0">
+          <CardContent className="px-3 py-0 sm:p-6 sm:pt-0">
             {groups.length === 0 ? (
               <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-6 pb-6 pt-4 text-center sm:p-0">
                 <ReceiptText className="size-10 text-muted-foreground" />

@@ -900,7 +900,7 @@ export function DebtsManager({ debts, selectedMonth, currency }: DebtsManagerPro
               <MonthSelector selectedMonth={selectedMonth} />
             </div>
           </CardHeader>
-          <CardContent className="p-0 sm:p-6 sm:pt-0">
+          <CardContent className="px-3 py-0 sm:p-6 sm:pt-0">
             {debts.length > 0 ? (
               <Table>
                   <TableHeader>
@@ -1065,7 +1065,7 @@ export function DebtsManager({ debts, selectedMonth, currency }: DebtsManagerPro
                 Quanto ja foi pago antes do mes selecionado e quanto sobra depois.
               </CardDescription>
             </CardHeader>
-            <CardContent className="p-0 sm:p-6 sm:pt-0">
+            <CardContent className="px-3 py-0 sm:p-6 sm:pt-0">
               <Table>
                 <TableHeader>
                   <TableRow>
