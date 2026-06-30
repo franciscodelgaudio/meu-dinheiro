@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarIcon,
   CheckCheck,
+  ChevronLeft,
+  ChevronRight,
   CreditCard,
   MoreHorizontal,
   Pencil,
@@ -54,7 +56,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -129,21 +135,61 @@ function getDefaultPaymentDate(selectedMonth: string, paymentDay: number | null)
   return `${selectedMonth}-${String(day).padStart(2, "0")}`;
 }
 
+const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+
 function MonthSelector({ selectedMonth }: { selectedMonth: string }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [open, setOpen] = useState(false);
+
+  const [year, month] = selectedMonth.split("-").map(Number);
+  const [viewYear, setViewYear] = useState(year);
+
+  useEffect(() => {
+    setViewYear(year);
+  }, [year]);
+
+  function selectMonth(m: number) {
+    router.push(`${pathname}?month=${viewYear}-${String(m).padStart(2, "0")}`);
+    setOpen(false);
+  }
 
   return (
-    <div className="relative">
-      <CalendarIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        type="month"
-        value={selectedMonth}
-        onChange={(event) => router.push(`${pathname}?month=${event.target.value}`)}
-        className="w-[172px] pl-9"
-        aria-label="Selecionar mes"
-      />
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="gap-2">
+          <CalendarIcon className="size-4" />
+          <span className="capitalize">{formatReferenceMonth(selectedMonth)}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-3" align="start">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <Button variant="ghost" size="icon" onClick={() => setViewYear((y) => y - 1)}>
+            <ChevronLeft className="size-4" />
+          </Button>
+          <span className="text-sm font-medium">{viewYear}</span>
+          <Button variant="ghost" size="icon" onClick={() => setViewYear((y) => y + 1)}>
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+        <div className="grid grid-cols-3 gap-1">
+          {MONTHS.map((name, i) => {
+            const m = i + 1;
+            const isSelected = m === month && viewYear === year;
+            return (
+              <Button
+                key={m}
+                variant={isSelected ? "default" : "ghost"}
+                size="sm"
+                onClick={() => selectMonth(m)}
+              >
+                {name}
+              </Button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -831,18 +877,10 @@ export function DebtsManager({ debts, selectedMonth, currency }: DebtsManagerPro
     () => debts.reduce((total, debt) => total + Number(debt.remainingAfterMonth), 0),
     [debts],
   );
-  const totalOriginal = useMemo(
-    () => debts.reduce((total, debt) => total + Number(debt.totalAmount), 0),
-    [debts],
-  );
   const paidCount = useMemo(
     () => debts.filter((d) => d.isPaid).length,
     [debts],
   );
-  const paidPercentage =
-    totalOriginal > 0
-      ? ((totalOriginal - totalRemainingAfterMonth) / totalOriginal) * 100
-      : 0;
 
   return (
     <div className="grid gap-4 sm:gap-6">
@@ -978,7 +1016,7 @@ export function DebtsManager({ debts, selectedMonth, currency }: DebtsManagerPro
           </CardContent>
         </Card>
 
-        <div className="grid gap-4 sm:gap-6">
+        <div className="grid gap-4 self-start sm:gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Resumo de compromissos</CardTitle>
@@ -1016,16 +1054,6 @@ export function DebtsManager({ debts, selectedMonth, currency }: DebtsManagerPro
                 </span>
               </div>
             </div>
-            <Separator />
-            <div className="grid gap-3">
-              <Progress value={Math.min(paidPercentage, 100)} />
-              <p className="text-sm text-muted-foreground">
-                {new Intl.NumberFormat("pt-BR", {
-                  maximumFractionDigits: 1,
-                }).format(paidPercentage)}
-                % dos compromissos listados ja fica quitado ate este mes.
-              </p>
-            </div>
           </CardContent>
         </Card>
 
@@ -1046,7 +1074,7 @@ export function DebtsManager({ debts, selectedMonth, currency }: DebtsManagerPro
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {debts.map((debt) => {
+                  {debts.filter((d) => Number(d.remainingAfterMonth) > 0).map((debt) => {
                     const remaining = Number(debt.remainingAfterMonth);
 
                     return (

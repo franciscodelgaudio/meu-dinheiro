@@ -1,4 +1,5 @@
 import { auth, signOut } from "@/auth";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
   LayoutDashboard,
@@ -51,6 +52,8 @@ const features = [
 
 export default async function Home() {
   const session = await auth();
+
+  if (session?.user) redirect("/dashboard");
 
   return (
     <main className="flex min-h-screen flex-col bg-zinc-50">
