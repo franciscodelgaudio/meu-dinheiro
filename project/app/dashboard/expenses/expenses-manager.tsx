@@ -620,7 +620,7 @@ function ExpenseDialog({
           )}
         </DialogTrigger>
       )}
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="flex flex-col sm:max-w-xl max-h-[90dvh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>{expense ? "Editar gasto" : "Novo gasto"}</DialogTitle>
           <DialogDescription>
@@ -628,12 +628,13 @@ function ExpenseDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form action={formAction} className="grid gap-5">
+        <form action={formAction} className="flex flex-col gap-5 flex-1 min-h-0">
           {expense ? <input type="hidden" name="id" value={expense.id} /> : null}
           <input type="hidden" name="expenseGroupId" value={selectedGroupId} />
           <input type="hidden" name="behaviorType" value={behaviorType} />
           <input type="hidden" name="coverageDays" value={coverageDays} />
 
+          <div className="flex flex-col gap-5 overflow-y-auto flex-1">
           {!expense && commonExpenses && commonExpenses.length > 0 ? (
             <div className="grid gap-2 rounded-md border bg-muted/30 p-3">
               <div className="flex items-center gap-2 text-sm font-medium">
@@ -762,6 +763,7 @@ function ExpenseDialog({
                 required
               />
             </div>
+          </div>
           </div>
 
           <DialogFooter>

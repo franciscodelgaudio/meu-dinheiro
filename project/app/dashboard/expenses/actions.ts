@@ -29,8 +29,6 @@ type ExpenseInput = {
   title: string;
   expenseGroupId: string;
   amount: number;
-  behaviorType: string;
-  coverageDays: number;
 };
 
 type CreditCardExpenseInput = {
@@ -44,16 +42,6 @@ type CreditCardExpenseInput = {
 
 const CREDIT_CARD_GROUP_NAME = "Cartao de credito";
 const CREDIT_CARD_GROUP_COLOR = "#2563eb";
-const EXPENSE_BEHAVIOR_TYPES = new Set([
-  "single",
-  "stock",
-  "emergency",
-  "daily",
-  "stock_up",
-  "recurring",
-  "installment",
-  "exceptional",
-]);
 
 async function getCurrentUserId() {
   const session = await auth();

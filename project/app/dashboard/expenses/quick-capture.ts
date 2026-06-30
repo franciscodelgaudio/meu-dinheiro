@@ -1,7 +1,5 @@
 "use server";
 
-export type QuickExpenseBehavior = "single" | "stock" | "recurring" | "emergency";
-
 export type ExpenseGroupSuggestion = {
   id: string;
   name: string;
@@ -13,8 +11,6 @@ export type QuickExpenseSuggestion = {
   description: string;
   suggestedGroup: string;
   suggestedGroupId: string | null;
-  behaviorType: QuickExpenseBehavior;
-  coverageDays: number;
   date: string;
   confidence: number;
 };
@@ -49,11 +45,6 @@ const quickExpenseSchema = {
           amount: { type: "number" },
           description: { type: "string" },
           suggestedGroup: { type: "string" },
-          behaviorType: {
-            type: "string",
-            enum: ["single", "stock", "recurring", "emergency"],
-          },
-          coverageDays: { type: "integer" },
           date: { type: "string" },
           confidence: { type: "number" },
         },
@@ -61,8 +52,6 @@ const quickExpenseSchema = {
           "amount",
           "description",
           "suggestedGroup",
-          "behaviorType",
-          "coverageDays",
           "date",
           "confidence",
         ],
@@ -167,19 +156,9 @@ function sanitizeSuggestionItem(
   const suggestedGroup = String(
     parsed.suggestedGroup ?? groups[0]?.name ?? "",
   ).trim();
-  const behaviorType = String(
-    parsed.behaviorType ?? "single",
-  ) as QuickExpenseBehavior;
-  const coverageDays = Number(parsed.coverageDays ?? 1);
   const date = String(parsed.date ?? today).trim();
   const confidence = Number(parsed.confidence ?? 0.5);
   const matchedGroup = matchSuggestedGroup(suggestedGroup, groups);
-  const validBehaviorTypes = new Set([
-    "single",
-    "stock",
-    "recurring",
-    "emergency",
-  ]);
 
   return {
     clientId: `quick-${Date.now()}-${index}`,
@@ -187,10 +166,6 @@ function sanitizeSuggestionItem(
     description: description || "Gasto",
     suggestedGroup: matchedGroup?.name ?? suggestedGroup ?? groups[0]?.name ?? "",
     suggestedGroupId: matchedGroup?.id ?? groups[0]?.id ?? null,
-    behaviorType: validBehaviorTypes.has(behaviorType) ? behaviorType : "single",
-    coverageDays: Number.isInteger(coverageDays)
-      ? clamp(coverageDays, 1, 365)
-      : 1,
     date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : today,
     confidence: Number.isFinite(confidence) ? clamp(confidence, 0, 1) : 0.5,
   };
@@ -247,15 +222,9 @@ export async function analyzeQuickExpenseWithAI({
     `Data de hoje: ${today}. Mes selecionado: ${selectedMonth}.`,
     `Grupos existentes do usuario: ${groupNames || "nenhum"}.`,
     "Use suggestedGroup com o grupo existente mais provavel. Se nao houver match claro, escolha o mais proximo.",
-    "Behavior types:",
-    "- single: consumo pontual de 1 dia, como restaurante, uber, lanche.",
-    "- stock: compra que cobre varios dias, como mercado para semana ou farmacia para tratamento.",
-    "- recurring: gasto recorrente/assinatura/conta.",
-    "- emergency: gasto inesperado e necessario.",
     "Se a entrada tiver itens de grupos diferentes, devolva um item por grupo ja agrupado.",
     "Exemplo: alimentos e higiene na mesma nota devem virar duas linhas: Alimentacao e Higiene.",
     "Nao precisa listar cada produto pequeno; agrupe pelo grupo financeiro util.",
-    "coverageDays deve refletir por quantos dias o gasto cobre consumo real.",
     "Para imagens, extraia estabelecimento, valor total, data e contexto visual/textual.",
     `Entrada do usuario: ${text || "(sem texto, analisar imagem)"}`,
   ].join("\n");

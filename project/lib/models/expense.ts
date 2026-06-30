@@ -10,8 +10,6 @@ const expenseSchema = new Schema(
     spentAt: { type: Date, required: true },
     title: { type: String, required: true },
     amount: { type: Number, default: 0 },
-    behaviorType: { type: String, default: "daily" },
-    coverageDays: { type: Number, default: 1 },
   },
   {
     timestamps: true,
