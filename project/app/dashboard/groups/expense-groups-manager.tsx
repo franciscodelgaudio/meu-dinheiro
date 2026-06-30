@@ -361,9 +361,8 @@ function MonthSelector({ selectedMonth }: { selectedMonth: string }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className="justify-start font-normal capitalize">
-          <CalendarIcon />
-          {formatReferenceMonth(selectedMonth)}
+        <Button type="button" variant="outline" size="icon" aria-label="Selecionar mes">
+          <CalendarIcon className="size-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-56 p-3" align="end">
@@ -483,7 +482,7 @@ function ExpenseGroupDialog({ group, selectedMonth }: { group?: ExpenseGroupView
         {group ? (
           <Button variant="outline" size="icon-sm" aria-label="Editar grupo"><Pencil /></Button>
         ) : (
-          <Button><Plus />Novo grupo</Button>
+          <Button size="icon" aria-label="Novo grupo"><Plus /></Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
@@ -591,7 +590,7 @@ function AddIncomeDialog({ selectedMonth }: { selectedMonth: string }) {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline"><Plus />Adicionar renda</Button>
+        <Button variant="outline" size="icon" aria-label="Adicionar renda"><Plus /></Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
@@ -666,7 +665,7 @@ function SavingsAllocationDialog({ savingsAllocation, selectedMonth }: { savings
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline"><PiggyBank />Poupanca</Button>
+        <Button variant="outline" size="icon" aria-label="Poupanca"><PiggyBank className="size-4" /></Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>

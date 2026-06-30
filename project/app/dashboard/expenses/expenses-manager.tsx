@@ -600,9 +600,8 @@ function ExpenseDialog({
               <Pencil />
             </Button>
           ) : (
-            <Button disabled={groups.length === 0}>
+            <Button size="icon" disabled={groups.length === 0} aria-label="Novo gasto">
               <Plus />
-              Novo gasto
             </Button>
           )}
         </DialogTrigger>
@@ -795,9 +794,8 @@ function CreditCardExpenseDialog({ selectedMonth }: { selectedMonth: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary">
-          <CreditCard />
-          Compra parcelada
+        <Button variant="outline" size="icon" aria-label="Compra parcelada">
+          <CreditCard className="size-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
@@ -1079,7 +1077,7 @@ export function ExpensesManager({
                 selectedMonth={selectedMonth}
               />
             </div>
-            <div className="flex flex-col gap-2 border-t border-zinc-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 border-t border-zinc-100 pt-3">
               <MonthSelector selectedMonth={selectedMonth} />
               <CreditCardExpenseDialog selectedMonth={selectedMonth} />
             </div>

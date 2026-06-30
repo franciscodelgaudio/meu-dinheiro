@@ -157,9 +157,8 @@ function MonthSelector({ selectedMonth }: { selectedMonth: string }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className="gap-2">
+        <Button variant="outline" size="icon" aria-label="Selecionar mes">
           <CalendarIcon className="size-4" />
-          <span className="capitalize">{formatReferenceMonth(selectedMonth)}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-3" align="start">
@@ -238,9 +237,8 @@ function DebtDialog({
               <Pencil />
             </Button>
           ) : (
-            <Button>
+            <Button size="icon" aria-label="Nova divida">
               <Plus />
-              Nova divida
             </Button>
           )}
         </DialogTrigger>
