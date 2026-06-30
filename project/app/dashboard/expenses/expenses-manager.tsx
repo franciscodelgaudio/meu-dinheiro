@@ -8,6 +8,7 @@ import {
   ChevronsUpDown,
   ImagePlus,
   CreditCard,
+  MoreHorizontal,
   Pencil,
   Plus,
   ReceiptText,
@@ -48,6 +49,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -501,15 +509,22 @@ function ExpenseDialog({
   commonExpenses,
   currency,
   selectedMonth,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: {
   expense?: ExpenseView;
   groups: ExpenseGroupOption[];
   commonExpenses?: CommonExpenseTemplate[];
   currency: string;
   selectedMonth: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = isControlled ? controlledOpen! : uncontrolledOpen;
+  const setOpen = isControlled ? controlledOnOpenChange! : setUncontrolledOpen;
   const defaultSpentAt = expense
     ? formatDateInput(expense.spentAt)
     : getDefaultSpentAt(selectedMonth);
@@ -568,18 +583,20 @@ function ExpenseDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {expense ? (
-          <Button variant="outline" size="icon-sm" aria-label="Editar gasto">
-            <Pencil />
-          </Button>
-        ) : (
-          <Button disabled={groups.length === 0}>
-            <Plus />
-            Novo gasto
-          </Button>
-        )}
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          {expense ? (
+            <Button variant="outline" size="icon-sm" aria-label="Editar gasto">
+              <Pencil />
+            </Button>
+          ) : (
+            <Button disabled={groups.length === 0}>
+              <Plus />
+              Novo gasto
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{expense ? "Editar gasto" : "Novo gasto"}</DialogTitle>
@@ -872,10 +889,17 @@ function CreditCardExpenseDialog({ selectedMonth }: { selectedMonth: string }) {
   );
 }
 
-function DeleteExpenseButton({ expense }: { expense: ExpenseView }) {
+function DeleteExpenseDialog({
+  expense,
+  open,
+  onOpenChange,
+}: {
+  expense: ExpenseView;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [open, setOpen] = useState(false);
 
   function handleDelete() {
     startTransition(async () => {
@@ -884,7 +908,7 @@ function DeleteExpenseButton({ expense }: { expense: ExpenseView }) {
       if (result.status === "success") {
         toast.success(result.message);
         router.refresh();
-        setOpen(false);
+        onOpenChange(false);
         return;
       }
 
@@ -893,12 +917,7 @@ function DeleteExpenseButton({ expense }: { expense: ExpenseView }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="destructive" size="icon-sm" aria-label="Excluir gasto">
-          <Trash2 />
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Excluir gasto?</DialogTitle>
@@ -921,6 +940,68 @@ function DeleteExpenseButton({ expense }: { expense: ExpenseView }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ExpenseActionsDropdown({
+  expense,
+  groups,
+  currency,
+  selectedMonth,
+}: {
+  expense: ExpenseView;
+  groups: ExpenseGroupOption[];
+  currency: string;
+  selectedMonth: string;
+}) {
+  const [openDialog, setOpenDialog] = useState<"edit" | "delete" | null>(null);
+  const close = () => setOpenDialog(null);
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon-sm" aria-label="Abrir acoes">
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {!expense.creditCardPurchaseId && (
+            <>
+              <DropdownMenuItem onSelect={() => setOpenDialog("edit")}>
+                <Pencil className="mr-2 size-4" />
+                Editar
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
+          <DropdownMenuItem
+            onSelect={() => setOpenDialog("delete")}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="mr-2 size-4" />
+            Excluir
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {!expense.creditCardPurchaseId && (
+        <ExpenseDialog
+          expense={expense}
+          groups={groups}
+          currency={currency}
+          selectedMonth={selectedMonth}
+          open={openDialog === "edit"}
+          onOpenChange={(o) => { if (!o) close(); }}
+        />
+      )}
+
+      <DeleteExpenseDialog
+        expense={expense}
+        open={openDialog === "delete"}
+        onOpenChange={(o) => { if (!o) close(); }}
+      />
+    </>
   );
 }
 
@@ -1016,7 +1097,7 @@ export function ExpensesManager({
                       <TableHead>Descrição</TableHead>
                       <TableHead className="hidden sm:table-cell">Grupo</TableHead>
                       <TableHead>Valor</TableHead>
-                      <TableHead className="w-20 text-right sm:w-24">Ações</TableHead>
+                      <TableHead className="w-12 text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1071,16 +1152,13 @@ export function ExpensesManager({
                           {formatMoney(expense.amount, currency)}
                         </TableCell>
                         <TableCell>
-                          <div className="flex justify-end gap-2">
-                            {expense.creditCardPurchaseId ? null : (
-                              <ExpenseDialog
-                                expense={expense}
-                                groups={groups}
-                                currency={currency}
-                                selectedMonth={selectedMonth}
-                              />
-                            )}
-                            <DeleteExpenseButton expense={expense} />
+                          <div className="flex justify-end">
+                            <ExpenseActionsDropdown
+                              expense={expense}
+                              groups={groups}
+                              currency={currency}
+                              selectedMonth={selectedMonth}
+                            />
                           </div>
                         </TableCell>
                       </TableRow>
