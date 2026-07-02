@@ -230,11 +230,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 sm:gap-6 sm:p-6">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Gastos</p>
-        <h1 className="mt-1 text-xl font-bold text-zinc-950 sm:text-2xl">Lançamentos</h1>
-      </header>
-
       <ExpensesManager
         groups={groups}
         groupTotals={groupTotals}

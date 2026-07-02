@@ -6,6 +6,7 @@ import {
   CalendarIcon,
   Camera,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
@@ -75,7 +76,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -175,6 +175,54 @@ function formatReferenceMonth(referenceMonth: string) {
   }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
+function shiftReferenceMonth(referenceMonth: string, delta: number) {
+  const [year, month] = referenceMonth.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatDayLabel(day: string) {
+  const [year, month, date] = day.split("-").map(Number);
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, date)));
+}
+
+function formatWeekdayShort(day: string) {
+  const [year, month, date] = day.split("-").map(Number);
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "short",
+    timeZone: "UTC",
+  })
+    .format(new Date(Date.UTC(year, month - 1, date)))
+    .replace(".", "");
+}
+
+function groupExpensesByDate(expenses: ExpenseView[]) {
+  const order: string[] = [];
+  const byDay = new Map<string, ExpenseView[]>();
+
+  for (const expense of expenses) {
+    const day = formatDateInput(expense.spentAt);
+
+    if (!byDay.has(day)) {
+      order.push(day);
+      byDay.set(day, []);
+    }
+
+    byDay.get(day)!.push(expense);
+  }
+
+  return order.map((day) => {
+    const items = byDay.get(day)!;
+    return { day, items, total: items.reduce((sum, e) => sum + Number(e.amount), 0) };
+  });
+}
+
 function getDefaultSpentAt(selectedMonth: string, isCurrentPeriod: boolean) {
   if (isCurrentPeriod) {
     const today = new Date();
@@ -186,17 +234,63 @@ function getDefaultSpentAt(selectedMonth: string, isCurrentPeriod: boolean) {
   return `${selectedMonth}-01`;
 }
 
-function getPercentage(value: number, total: number) {
-  if (total <= 0) {
-    return 0;
+/** Faixas de uso do orçamento: 100% de conta fixa é neutro, não alerta. */
+function getBudgetUsageState(usedPct: number) {
+  if (usedPct > 100) {
+    return {
+      label: "Estourou",
+      textClass: "text-red-600",
+      pillClass: "bg-red-50 text-red-700",
+      barClass: "bg-red-500",
+    };
   }
 
-  return (value / total) * 100;
+  if (usedPct === 100) {
+    return {
+      label: "No limite",
+      textClass: "text-zinc-500",
+      pillClass: "bg-zinc-100 text-zinc-600",
+      barClass: "bg-zinc-400",
+    };
+  }
+
+  if (usedPct >= 80) {
+    return {
+      label: "Atenção",
+      textClass: "text-amber-600",
+      pillClass: "bg-amber-50 text-amber-700",
+      barClass: "bg-amber-500",
+    };
+  }
+
+  return {
+    label: "Com folga",
+    textClass: "text-emerald-600",
+    pillClass: "bg-emerald-50 text-emerald-700",
+    barClass: "bg-emerald-500",
+  };
 }
 
+/** Variante "só a sobra": importa apenas se o grupo excedeu, zerou ou ainda tem folga. */
+function getGroupRestState(remaining: number) {
+  if (remaining < 0) {
+    return { label: "excedeu", valueClass: "text-red-600" };
+  }
 
+  if (remaining === 0) {
+    return { label: "tudo usado", valueClass: "text-zinc-400" };
+  }
 
-function MonthSelector({ selectedMonth }: { selectedMonth: string }) {
+  return { label: "restante", valueClass: "text-emerald-700" };
+}
+
+function MonthControl({
+  selectedMonth,
+  className,
+}: {
+  selectedMonth: string;
+  className?: string;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -205,41 +299,191 @@ function MonthSelector({ selectedMonth }: { selectedMonth: string }) {
 
   useEffect(() => setViewYear(year), [year]);
 
+  function goToMonth(value: string) {
+    router.push(`${pathname}?month=${value}`);
+  }
+
   function selectMonth(m: number) {
-    router.push(`${pathname}?month=${viewYear}-${String(m).padStart(2, "0")}`);
+    goToMonth(`${viewYear}-${String(m).padStart(2, "0")}`);
     setOpen(false);
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="icon" aria-label="Selecionar mes">
-          <CalendarIcon className="size-4" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-3" align="start">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <Button variant="ghost" size="icon" onClick={() => setViewYear((y) => y - 1)}>
-            <ChevronLeft className="size-4" />
+    <div className={cn("flex items-center gap-1 rounded-xl border bg-background p-1", className)}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Mês anterior"
+        onClick={() => goToMonth(shiftReferenceMonth(selectedMonth, -1))}
+      >
+        <ChevronLeft className="size-4" />
+      </Button>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="min-w-0 flex-1 justify-center gap-2 font-semibold capitalize sm:flex-none"
+          >
+            <CalendarIcon className="size-3.5 shrink-0 text-zinc-400" />
+            <span className="truncate">{formatReferenceMonth(selectedMonth)}</span>
           </Button>
-          <span className="text-sm font-medium">{viewYear}</span>
-          <Button variant="ghost" size="icon" onClick={() => setViewYear((y) => y + 1)}>
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
-        <div className="grid grid-cols-3 gap-1">
-          {MONTHS.map((name, i) => {
-            const m = i + 1;
-            const isSelected = m === month && viewYear === year;
-            return (
-              <Button key={m} variant={isSelected ? "default" : "ghost"} size="sm" onClick={() => selectMonth(m)}>
-                {name}
-              </Button>
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-3" align="center">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <Button type="button" variant="ghost" size="icon" onClick={() => setViewYear((y) => y - 1)}>
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="text-sm font-medium">{viewYear}</span>
+            <Button type="button" variant="ghost" size="icon" onClick={() => setViewYear((y) => y + 1)}>
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {MONTHS.map((name, i) => {
+              const m = i + 1;
+              const isSelected = m === month && viewYear === year;
+              return (
+                <Button key={m} type="button" variant={isSelected ? "default" : "ghost"} size="sm" onClick={() => selectMonth(m)}>
+                  {name}
+                </Button>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Próximo mês"
+        onClick={() => goToMonth(shiftReferenceMonth(selectedMonth, 1))}
+      >
+        <ChevronRight className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
+function ExpenseKpis({
+  totalSpent,
+  totalPlanned,
+  currency,
+}: {
+  totalSpent: number;
+  totalPlanned: number;
+  currency: string;
+}) {
+  const remaining = totalPlanned - totalSpent;
+  const isOver = remaining < 0;
+  const usedPct = totalPlanned > 0 ? Math.round((totalSpent / totalPlanned) * 100) : 0;
+  const usageState = getBudgetUsageState(usedPct);
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <Card className="gap-1 py-4">
+        <CardContent className="px-4">
+          <p className="text-xs font-semibold text-zinc-500">Gasto registrado</p>
+          <p className="mt-2 text-xl font-semibold tracking-tight text-zinc-950 sm:text-2xl">
+            {formatMoney(totalSpent, currency)}
+          </p>
+          <p className="mt-1 text-xs text-zinc-400">{usedPct}% do planejado</p>
+        </CardContent>
+      </Card>
+      <Card className="gap-1 py-4">
+        <CardContent className="px-4">
+          <p className="text-xs font-semibold text-zinc-500">Planejado</p>
+          <p className="mt-2 text-xl font-semibold tracking-tight text-zinc-950 sm:text-2xl">
+            {formatMoney(totalPlanned, currency)}
+          </p>
+          <p className="mt-1 text-xs text-zinc-400">orçamento do mês</p>
+        </CardContent>
+      </Card>
+      <Card className={cn("gap-1 py-4", isOver ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50")}>
+        <CardContent className="px-4">
+          <p className="text-xs font-semibold text-zinc-500">{isOver ? "Excedente" : "Sobra"}</p>
+          <p
+            className={cn(
+              "mt-2 text-xl font-semibold tracking-tight sm:text-2xl",
+              isOver ? "text-red-700" : "text-emerald-700",
+            )}
+          >
+            {formatMoney(remaining, currency)}
+          </p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {isOver ? "acima do planejado este mês" : "disponível até o fim do mês"}
+          </p>
+        </CardContent>
+      </Card>
+      <Card className="gap-1 py-4">
+        <CardContent className="px-4">
+          <p className="text-xs font-semibold text-zinc-500">Uso do orçamento</p>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className={cn("text-xl font-bold tracking-tight sm:text-2xl", usageState.textClass)}>
+              {usedPct}%
+            </span>
+            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", usageState.pillClass)}>
+              {usageState.label}
+            </span>
+          </div>
+          <div className="mt-2.5 h-[7px] w-full overflow-hidden rounded-full bg-zinc-100">
+            <div
+              className={cn("h-full rounded-full transition-all", usageState.barClass)}
+              style={{ width: `${Math.min(usedPct, 100)}%` }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function GroupUsageCard({
+  groupTotals,
+  currency,
+  selectedMonth,
+  className,
+}: {
+  groupTotals: ExpenseGroupTotal[];
+  currency: string;
+  selectedMonth: string;
+  className?: string;
+}) {
+  return (
+    <Card className={cn("h-fit", className)}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold text-zinc-800">Uso por grupo</CardTitle>
+        <CardDescription className="capitalize">{formatReferenceMonth(selectedMonth)}</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {groupTotals.map((group) => {
+          const spent = Number(group.spentAmount);
+          const planned = Number(group.monthlyAmount);
+          const remaining = planned - spent;
+          const restState = getGroupRestState(remaining);
+
+          return (
+            <div
+              key={group.id}
+              className="flex items-center justify-between gap-3 border-b border-zinc-100 py-2.5 last:border-0"
+            >
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} />
+                <span className="truncate text-sm font-medium text-zinc-700">{group.name}</span>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className={cn("font-mono text-sm font-semibold", restState.valueClass)}>
+                  {formatMoney(remaining, currency)}
+                </p>
+                <p className="text-[11px] text-zinc-400">{restState.label}</p>
+              </div>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -252,6 +496,7 @@ function QuickExpenseCapture({
 }) {
   const router = useRouter();
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(true);
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -302,17 +547,30 @@ function QuickExpenseCapture({
 
   return (
     <>
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="size-4" />
-            Captura rapida
-          </CardTitle>
+      <Card className="gap-3 py-4 sm:py-6">
+        <CardHeader className="gap-1 pb-0">
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 text-left md:pointer-events-none"
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen((o) => !o)}
+          >
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="size-4" />
+              Captura rápida
+            </CardTitle>
+            <ChevronDown
+              className={cn(
+                "ml-auto size-4 shrink-0 text-zinc-400 transition-transform md:hidden",
+                mobileOpen && "rotate-180",
+              )}
+            />
+          </button>
           <CardDescription>
             Digite como voce falaria ou envie um print/nota. Voce confirma antes de salvar.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className={cn(!mobileOpen && "hidden md:block")}>
           <form
             className="grid gap-3"
             onSubmit={(e) => {
@@ -359,44 +617,46 @@ function QuickExpenseCapture({
                   ))}
                 </div>
               )}
-              <div className="flex items-center justify-end gap-2">
-                <Label className="flex cursor-pointer items-center justify-center rounded-md border p-2 transition-colors hover:bg-zinc-50" title="Adicionar imagem">
-                  <ImagePlus className="size-4" />
-                  <Input
-                    ref={imageInputRef}
-                    name="quickImage"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="absolute opacity-0 w-px h-px overflow-hidden"
-                    onChange={(e) => {
-                      const newFiles = Array.from(e.target.files ?? []);
-                      if (newFiles.length > 0) {
-                        setSelectedImages((prev) => [...prev, ...newFiles]);
-                        e.target.value = "";
-                      }
-                    }}
-                  />
-                </Label>
-                <Label className="flex cursor-pointer items-center justify-center rounded-md border p-2 transition-colors hover:bg-zinc-50" title="Tirar foto">
-                  <Camera className="size-4" />
-                  <Input
-                    ref={cameraInputRef}
-                    name="quickImage"
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="absolute opacity-0 w-px h-px overflow-hidden"
-                    onChange={(e) => {
-                      const newFiles = Array.from(e.target.files ?? []);
-                      if (newFiles.length > 0) {
-                        setSelectedImages((prev) => [...prev, ...newFiles]);
-                        e.target.value = "";
-                      }
-                    }}
-                  />
-                </Label>
-                <Button type="submit" disabled={isAnalyzing || groups.length === 0}>
+              <div className="flex flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end">
+                <div className="flex items-center justify-end gap-2">
+                  <Label className="flex cursor-pointer items-center justify-center rounded-md border p-2 transition-colors hover:bg-zinc-50" title="Adicionar imagem">
+                    <ImagePlus className="size-4" />
+                    <Input
+                      ref={imageInputRef}
+                      name="quickImage"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="absolute opacity-0 w-px h-px overflow-hidden"
+                      onChange={(e) => {
+                        const newFiles = Array.from(e.target.files ?? []);
+                        if (newFiles.length > 0) {
+                          setSelectedImages((prev) => [...prev, ...newFiles]);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                  </Label>
+                  <Label className="flex cursor-pointer items-center justify-center rounded-md border p-2 transition-colors hover:bg-zinc-50" title="Tirar foto">
+                    <Camera className="size-4" />
+                    <Input
+                      ref={cameraInputRef}
+                      name="quickImage"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="absolute opacity-0 w-px h-px overflow-hidden"
+                      onChange={(e) => {
+                        const newFiles = Array.from(e.target.files ?? []);
+                        if (newFiles.length > 0) {
+                          setSelectedImages((prev) => [...prev, ...newFiles]);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                  </Label>
+                </div>
+                <Button type="submit" className="sm:w-auto" disabled={isAnalyzing || groups.length === 0}>
                   {isAnalyzing ? (
                     "Interpretando..."
                   ) : (
@@ -529,6 +789,7 @@ function ExpenseDialog({
   isCurrentPeriod = false,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  trigger,
 }: {
   expense?: ExpenseView;
   groups: ExpenseGroupOption[];
@@ -538,6 +799,7 @@ function ExpenseDialog({
   isCurrentPeriod?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  trigger?: React.ReactNode;
 }) {
   const router = useRouter();
   const isControlled = controlledOpen !== undefined;
@@ -596,15 +858,16 @@ function ExpenseDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       {!isControlled && (
         <DialogTrigger asChild>
-          {expense ? (
-            <Button variant="outline" size="icon-sm" aria-label="Editar gasto">
-              <Pencil />
-            </Button>
-          ) : (
-            <Button size="icon" disabled={groups.length === 0} aria-label="Novo gasto">
-              <Plus />
-            </Button>
-          )}
+          {trigger ??
+            (expense ? (
+              <Button variant="outline" size="icon-sm" aria-label="Editar gasto">
+                <Pencil />
+              </Button>
+            ) : (
+              <Button size="icon" disabled={groups.length === 0} aria-label="Novo gasto">
+                <Plus />
+              </Button>
+            ))}
         </DialogTrigger>
       )}
       <DialogContent className="flex flex-col sm:max-w-xl max-h-[90dvh] overflow-hidden">
@@ -1022,25 +1285,20 @@ function ExpenseActionsDropdown({
 
 const EXPENSES_PER_PAGE = 10;
 
-export function ExpensesManager({
+function ExpensesListCard({
   groups,
-  groupTotals,
   expenses,
-  commonExpenses,
   selectedMonth,
   isCurrentPeriod,
   currency,
   totalExpenses,
   currentPage,
-}: ExpensesManagerProps) {
+  className,
+}: Omit<ExpensesManagerProps, "groupTotals" | "commonExpenses"> & { className?: string }) {
   const pathname = usePathname();
   const router = useRouter();
-
-  const visibleGroupTotals = groupTotals.filter(
-    (g) => Number(g.monthlyAmount) > 0 || Number(g.spentAmount) > 0,
-  );
-
   const totalPages = Math.ceil(totalExpenses / EXPENSES_PER_PAGE);
+  const dateGroups = useMemo(() => groupExpensesByDate(expenses), [expenses]);
 
   function handlePageChange(newPage: number) {
     const params = new URLSearchParams();
@@ -1065,70 +1323,113 @@ export function ExpensesManager({
   }, [currentPage, totalPages]);
 
   return (
-    <div className="grid gap-4 sm:gap-6">
-      <QuickExpenseCapture groups={groups} selectedMonth={selectedMonth} />
-
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-[1fr_380px]">
-        <Card>
-          <CardHeader className="gap-0 pb-0">
-            <div className="flex items-start justify-between gap-3 pb-3">
-              <div>
-                <CardTitle>Gastos registrados</CardTitle>
-                <CardDescription className="mt-1 capitalize">
-                  {formatReferenceMonth(selectedMonth)}
-                </CardDescription>
-              </div>
-              <ExpenseDialog
-                groups={groups}
-                commonExpenses={commonExpenses}
-                currency={currency}
-                selectedMonth={selectedMonth}
-                isCurrentPeriod={isCurrentPeriod}
-              />
+    <Card className={className}>
+      <CardHeader className="gap-1 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle>Gastos registrados</CardTitle>
+            <CardDescription className="mt-1 capitalize">
+              {formatReferenceMonth(selectedMonth)}
+            </CardDescription>
+          </div>
+          <CreditCardExpenseDialog selectedMonth={selectedMonth} isCurrentPeriod={isCurrentPeriod} />
+        </div>
+      </CardHeader>
+      <CardContent className="px-3 py-0 sm:p-6 sm:pt-0">
+        {groups.length === 0 ? (
+          <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-6 pb-6 pt-4 text-center sm:p-0">
+            <ReceiptText className="size-10 text-muted-foreground" />
+            <div>
+              <h2 className="text-lg font-semibold">
+                Crie um grupo de despesas primeiro
+              </h2>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                Os gastos precisam pertencer a um grupo, como Moradia,
+                Alimentacao ou Transporte.
+              </p>
             </div>
-            <div className="flex items-center gap-2 border-t border-zinc-100 pt-3">
-              <MonthSelector selectedMonth={selectedMonth} />
-              <CreditCardExpenseDialog selectedMonth={selectedMonth} isCurrentPeriod={isCurrentPeriod} />
-            </div>
-          </CardHeader>
-          <CardContent className="px-3 py-0 sm:p-6 sm:pt-0">
-            {groups.length === 0 ? (
-              <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-6 pb-6 pt-4 text-center sm:p-0">
-                <ReceiptText className="size-10 text-muted-foreground" />
-                <div>
-                  <h2 className="text-lg font-semibold">
-                    Crie um grupo de despesas primeiro
-                  </h2>
-                  <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                    Os gastos precisam pertencer a um grupo, como Moradia,
-                    Alimentacao ou Transporte.
-                  </p>
-                </div>
-              </div>
-            ) : expenses.length > 0 ? (
-              <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="hidden sm:table-cell">Data</TableHead>
-                      <TableHead>Descrição</TableHead>
-                      <TableHead className="hidden sm:table-cell">Grupo</TableHead>
-                      <TableHead>Valor</TableHead>
-                      <TableHead className="w-12 text-right">Ações</TableHead>
+          </div>
+        ) : expenses.length > 0 ? (
+          <>
+            <div className="hidden sm:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Descrição</TableHead>
+                    <TableHead>Grupo</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead className="w-12 text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {expenses.map((expense) => (
+                    <TableRow key={expense.id}>
+                      <TableCell className="whitespace-nowrap font-mono text-xs text-zinc-400">
+                        {formatDate(expense.spentAt)}
+                      </TableCell>
+                      <TableCell className="font-medium">{expense.title}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline" className="gap-2">
+                            <span
+                              className="size-2 rounded-full"
+                              style={{ backgroundColor: expense.groupColor }}
+                            />
+                            {expense.groupName}
+                          </Badge>
+                          {expense.creditCardPurchaseId &&
+                          expense.installmentNumber &&
+                          expense.installmentCount ? (
+                            <Badge variant="secondary" className="gap-1">
+                              <CreditCard className="size-3" />
+                              {expense.installmentNumber}/{expense.installmentCount}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-medium text-zinc-950">
+                        {formatMoney(expense.amount, currency)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end">
+                          <ExpenseActionsDropdown
+                            expense={expense}
+                            groups={groups}
+                            currency={currency}
+                            selectedMonth={selectedMonth}
+                          />
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {expenses.map((expense) => (
-                      <TableRow key={expense.id}>
-                        <TableCell className="hidden whitespace-nowrap text-zinc-400 sm:table-cell">
-                          {formatDate(expense.spentAt)}
-                        </TableCell>
-                        <TableCell>
-                          <p className="font-medium">{expense.title}</p>
-                          <p className="mt-0.5 text-xs text-zinc-400 sm:hidden">
-                            {formatDate(expense.spentAt)}
-                          </p>
-                          <div className="mt-1 flex flex-wrap gap-1.5 sm:hidden">
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="grid gap-4 py-2 sm:hidden">
+              {dateGroups.map((group) => (
+                <div key={group.day}>
+                  <div className="flex items-baseline justify-between px-0.5 pb-2">
+                    <p className="text-xs font-bold text-zinc-700">
+                      {formatDayLabel(group.day)}{" "}
+                      <span className="font-normal capitalize text-zinc-400">
+                        · {formatWeekdayShort(group.day)}
+                      </span>
+                    </p>
+                    <span className="font-mono text-xs text-zinc-400">
+                      {formatMoney(group.total, currency)}
+                    </span>
+                  </div>
+                  <div className="grid gap-2">
+                    {group.items.map((expense) => (
+                      <div
+                        key={expense.id}
+                        className="flex items-center gap-3 rounded-xl border p-3.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold text-zinc-950">{expense.title}</p>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             <Badge variant="outline" className="gap-1.5 text-xs">
                               <span
                                 className="size-2 rounded-full"
@@ -1145,169 +1446,198 @@ export function ExpensesManager({
                               </Badge>
                             ) : null}
                           </div>
-                        </TableCell>
-                        <TableCell className="hidden sm:table-cell">
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="outline" className="gap-2">
-                              <span
-                                className="size-2 rounded-full"
-                                style={{ backgroundColor: expense.groupColor }}
-                              />
-                              {expense.groupName}
-                            </Badge>
-                            {expense.creditCardPurchaseId &&
-                            expense.installmentNumber &&
-                            expense.installmentCount ? (
-                              <Badge variant="secondary" className="gap-1">
-                                <CreditCard className="size-3" />
-                                {expense.installmentNumber}/{expense.installmentCount}
-                              </Badge>
-                            ) : null}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium text-red-700">
+                        </div>
+                        <span className="shrink-0 font-mono text-sm font-semibold text-zinc-950">
                           {formatMoney(expense.amount, currency)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex justify-end">
-                            <ExpenseActionsDropdown
-                              expense={expense}
-                              groups={groups}
-                              currency={currency}
-                              selectedMonth={selectedMonth}
-                            />
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                        </span>
+                        <ExpenseActionsDropdown
+                          expense={expense}
+                          groups={groups}
+                          currency={currency}
+                          selectedMonth={selectedMonth}
+                        />
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
-                {totalPages > 1 && (
-                  <div className="border-t px-6 py-3">
-                    <Pagination>
-                      <PaginationContent>
-                        <PaginationItem>
-                          <PaginationPrevious
-                            onClick={() => handlePageChange(currentPage - 1)}
-                            aria-disabled={currentPage === 1}
-                            className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                          />
-                        </PaginationItem>
-                        {pageItems.map((item, i) =>
-                          item === "ellipsis" ? (
-                            <PaginationItem key={`ellipsis-${i}`}>
-                              <PaginationEllipsis />
-                            </PaginationItem>
-                          ) : (
-                            <PaginationItem key={item}>
-                              <PaginationLink
-                                isActive={item === currentPage}
-                                onClick={() => handlePageChange(item)}
-                                className="cursor-pointer"
-                              >
-                                {item}
-                              </PaginationLink>
-                            </PaginationItem>
-                          ),
-                        )}
-                        <PaginationItem>
-                          <PaginationNext
-                            onClick={() => handlePageChange(currentPage + 1)}
-                            aria-disabled={currentPage === totalPages}
-                            className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                          />
-                        </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
                   </div>
-                )}
-              </>
-            ) : (
-              <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-6 pb-6 pt-4 text-center sm:p-0">
-                <ReceiptText className="size-10 text-muted-foreground" />
-                <div>
-                  <h2 className="text-lg font-semibold">
-                    Nenhum gasto registrado
-                  </h2>
-                  <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                    Adicione um gasto para acompanhar o que ja saiu de cada
-                    grupo neste mes.
-                  </p>
                 </div>
+              ))}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="border-t px-0 py-3 sm:px-6">
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        aria-disabled={currentPage === 1}
+                        className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+                    {pageItems.map((item, i) =>
+                      item === "ellipsis" ? (
+                        <PaginationItem key={`ellipsis-${i}`}>
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      ) : (
+                        <PaginationItem key={item}>
+                          <PaginationLink
+                            isActive={item === currentPage}
+                            onClick={() => handlePageChange(item)}
+                            className="cursor-pointer"
+                          >
+                            {item}
+                          </PaginationLink>
+                        </PaginationItem>
+                      ),
+                    )}
+                    <PaginationItem>
+                      <PaginationNext
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        aria-disabled={currentPage === totalPages}
+                        className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </>
+        ) : (
+          <div className="flex min-h-56 flex-col items-center justify-center gap-4 px-6 pb-6 pt-4 text-center sm:p-0">
+            <ReceiptText className="size-10 text-muted-foreground" />
+            <div>
+              <h2 className="text-lg font-semibold">
+                Nenhum gasto registrado
+              </h2>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                Adicione um gasto para acompanhar o que ja saiu de cada
+                grupo neste mes.
+              </p>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
-        {visibleGroupTotals.length > 0 && (
-          <Card className="h-fit border-zinc-200 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold text-zinc-800">Uso por grupo</CardTitle>
-              <CardDescription className="capitalize">{formatReferenceMonth(selectedMonth)}</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4">
-              {(() => {
-                const totalPlanned = visibleGroupTotals.reduce((s, g) => s + Number(g.monthlyAmount), 0);
-                const totalSpent = visibleGroupTotals.reduce((s, g) => s + Number(g.spentAmount), 0);
-                const remaining = totalPlanned - totalSpent;
-                return (
-                  <>
-                    <div className="grid gap-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-zinc-500">Gasto registrado</span>
-                        <span className="text-sm font-semibold text-red-700">{formatMoney(totalSpent, currency)}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-zinc-500">Planejado</span>
-                        <span className="text-sm font-semibold text-zinc-950">{formatMoney(totalPlanned, currency)}</span>
-                      </div>
-                      <Separator className="bg-zinc-100" />
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-zinc-500">Sobra</span>
-                        <span className={`text-sm font-bold ${remaining >= 0 ? "text-emerald-700" : "text-red-600"}`}>
-                          {formatMoney(remaining, currency)}
-                        </span>
-                      </div>
-                    </div>
-                    <Separator className="bg-zinc-100" />
-                  </>
-                );
-              })()}
-              {visibleGroupTotals.map((group) => {
-                const planned = Number(group.monthlyAmount);
-                const spent = Number(group.spentAmount);
-                const percentage = getPercentage(spent, planned);
-                const isOver = percentage > 100;
+export function ExpensesManager({
+  groups,
+  groupTotals,
+  expenses,
+  commonExpenses,
+  selectedMonth,
+  isCurrentPeriod,
+  currency,
+  totalExpenses,
+  currentPage,
+}: ExpensesManagerProps) {
+  const [mobileTab, setMobileTab] = useState<"lancamentos" | "grupos">("lancamentos");
 
-                return (
-                  <div key={group.id} className="grid gap-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: group.color }} />
-                        <span className="truncate text-xs font-medium text-zinc-700">{group.name}</span>
-                      </div>
-                      <Badge variant={isOver ? "destructive" : "secondary"} className="shrink-0 text-xs">
-                        {new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(percentage)}%
-                      </Badge>
-                    </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-100">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${Math.min(percentage, 100)}%`,
-                          backgroundColor: isOver ? "#dc2626" : group.color,
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-zinc-400">{formatMoney(spent, currency)}</span>
-                      <span className="text-xs text-zinc-400">de {formatMoney(planned, currency)}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
+  const visibleGroupTotals = groupTotals.filter(
+    (g) => Number(g.monthlyAmount) > 0 || Number(g.spentAmount) > 0,
+  );
+  const hasGroupUsage = visibleGroupTotals.length > 0;
+
+  const totalPlanned = groupTotals.reduce((sum, g) => sum + Number(g.monthlyAmount), 0);
+  const totalSpent = groupTotals.reduce((sum, g) => sum + Number(g.spentAmount), 0);
+
+  return (
+    <div className="grid gap-4 sm:gap-6">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Gastos</p>
+            <h1 className="mt-1 text-xl font-bold text-zinc-950 sm:text-2xl">Gastos</h1>
+            <p className="mt-1 max-w-xs text-sm text-zinc-500 sm:max-w-md">
+              Acompanhe seus lançamentos e o uso do orçamento mensal.
+            </p>
+          </div>
+          <ExpenseDialog
+            groups={groups}
+            commonExpenses={commonExpenses}
+            currency={currency}
+            selectedMonth={selectedMonth}
+            isCurrentPeriod={isCurrentPeriod}
+            trigger={
+              <Button
+                size="icon-lg"
+                className="rounded-xl sm:hidden"
+                disabled={groups.length === 0}
+                aria-label="Adicionar gasto"
+              >
+                <Plus />
+              </Button>
+            }
+          />
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <MonthControl selectedMonth={selectedMonth} className="w-full sm:w-auto" />
+          <ExpenseDialog
+            groups={groups}
+            commonExpenses={commonExpenses}
+            currency={currency}
+            selectedMonth={selectedMonth}
+            isCurrentPeriod={isCurrentPeriod}
+            trigger={
+              <Button className="hidden sm:inline-flex" disabled={groups.length === 0}>
+                <Plus />
+                Adicionar gasto
+              </Button>
+            }
+          />
+        </div>
+      </div>
+
+      <ExpenseKpis totalSpent={totalSpent} totalPlanned={totalPlanned} currency={currency} />
+
+      <QuickExpenseCapture groups={groups} selectedMonth={selectedMonth} />
+
+      {hasGroupUsage && (
+        <div className="flex gap-1 rounded-xl border bg-background p-1 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileTab("lancamentos")}
+            className={cn(
+              "flex-1 rounded-lg py-2 text-sm font-semibold transition-colors",
+              mobileTab === "lancamentos" ? "bg-zinc-900 text-white" : "text-zinc-500",
+            )}
+          >
+            Lançamentos
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab("grupos")}
+            className={cn(
+              "flex-1 rounded-lg py-2 text-sm font-semibold transition-colors",
+              mobileTab === "grupos" ? "bg-zinc-900 text-white" : "text-zinc-500",
+            )}
+          >
+            Uso por grupo
+          </button>
+        </div>
+      )}
+
+      <div className={cn("grid gap-4 sm:gap-6", hasGroupUsage && "lg:grid-cols-[1fr_380px]")}>
+        <ExpensesListCard
+          groups={groups}
+          expenses={expenses}
+          selectedMonth={selectedMonth}
+          isCurrentPeriod={isCurrentPeriod}
+          currency={currency}
+          totalExpenses={totalExpenses}
+          currentPage={currentPage}
+          className={cn(hasGroupUsage && mobileTab !== "lancamentos" && "hidden lg:block")}
+        />
+
+        {hasGroupUsage && (
+          <GroupUsageCard
+            groupTotals={visibleGroupTotals}
+            currency={currency}
+            selectedMonth={selectedMonth}
+            className={cn(mobileTab !== "grupos" && "hidden lg:block")}
+          />
         )}
       </div>
     </div>
