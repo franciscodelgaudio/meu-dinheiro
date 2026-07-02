@@ -1,27 +1,24 @@
-import mongoose, { Schema } from "mongoose";
+import { dbConnect } from "@/lib/mongoose";
+import mongoose from "mongoose";
 
-const plannedIncomeSchema = new Schema(
+const plannedIncomeSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true },
     referenceMonth: { type: String, required: true },
-    amount: { type: Number, default: 0 },
-    affectsFutureMonths: { type: Boolean, default: false },
-    repeatMonths: { type: String, default: null },
-    description: { type: String, default: null },
+    amount: { type: Number, required: false, default: 0 },
+    affectsFutureMonths: { type: Boolean, required: false, default: false },
+    repeatMonths: { type: String, required: false, default: null },
+    description: { type: String, required: false, default: null },
   },
-  {
-    timestamps: true,
-    collection: "plannedIncomes",
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
-  },
+  { timestamps: true },
 );
 
 plannedIncomeSchema.index({ userId: 1, referenceMonth: 1 });
 
+await dbConnect();
+
 export const PlannedIncome =
-  mongoose.models.PlannedIncome ??
-  mongoose.model("PlannedIncome", plannedIncomeSchema, "plannedIncomes");
+  mongoose.models.plannedincome || mongoose.model("plannedincome", plannedIncomeSchema);
 
 // Drop the old unique index that previously existed on userId+referenceMonth.
 // Multiple planned incomes per month are now allowed.

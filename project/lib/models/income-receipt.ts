@@ -1,24 +1,18 @@
-import mongoose, { Schema } from "mongoose";
+import { dbConnect } from "@/lib/mongoose";
+import mongoose from "mongoose";
 
-const incomeReceiptSchema = new Schema(
+const incomeReceiptSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true },
     referenceMonth: { type: String, required: true },
-    receivedAt: { type: Date, default: Date.now },
+    receivedAt: { type: Date, required: false, default: Date.now },
   },
-  {
-    timestamps: true,
-    collection: "incomeReceipts",
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
-  },
+  { timestamps: true },
 );
 
-incomeReceiptSchema.index(
-  { userId: 1, referenceMonth: 1 },
-  { unique: true },
-);
+incomeReceiptSchema.index({ userId: 1, referenceMonth: 1 }, { unique: true });
+
+await dbConnect();
 
 export const IncomeReceipt =
-  mongoose.models.IncomeReceipt ??
-  mongoose.model("IncomeReceipt", incomeReceiptSchema, "incomeReceipts");
+  mongoose.models.incomereceipt || mongoose.model("incomereceipt", incomeReceiptSchema);

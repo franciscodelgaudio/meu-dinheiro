@@ -1,21 +1,17 @@
-import mongoose, { Schema } from "mongoose";
+import { dbConnect } from "@/lib/mongoose";
+import mongoose from "mongoose";
 
-const expenseGroupOverrideSchema = new Schema(
+const expenseGroupOverrideSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true },
     expenseGroupId: { type: String, required: true },
     referenceMonth: { type: String, required: true },
     name: { type: String, required: true },
-    monthlyAmount: { type: Number, default: 0 },
-    color: { type: String, default: "#18181b" },
-    description: { type: String, default: null },
+    monthlyAmount: { type: Number, required: false, default: 0 },
+    color: { type: String, required: false, default: "#18181b" },
+    description: { type: String, required: false, default: null },
   },
-  {
-    timestamps: true,
-    collection: "expenseGroupOverrides",
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
-  },
+  { timestamps: true },
 );
 
 expenseGroupOverrideSchema.index(
@@ -24,10 +20,8 @@ expenseGroupOverrideSchema.index(
 );
 expenseGroupOverrideSchema.index({ userId: 1, referenceMonth: 1 });
 
+await dbConnect();
+
 export const ExpenseGroupOverride =
-  mongoose.models.ExpenseGroupOverride ??
-  mongoose.model(
-    "ExpenseGroupOverride",
-    expenseGroupOverrideSchema,
-    "expenseGroupOverrides",
-  );
+  mongoose.models.expensegroupoverride ||
+  mongoose.model("expensegroupoverride", expenseGroupOverrideSchema);

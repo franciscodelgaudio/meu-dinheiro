@@ -1,31 +1,22 @@
-import mongoose, { Schema } from "mongoose";
+import { dbConnect } from "@/lib/mongoose";
+import mongoose from "mongoose";
 
-const savingsAllocationSchema = new Schema(
+const savingsAllocationSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true },
     referenceMonth: { type: String, required: true },
-    amount: { type: Number, default: 0 },
-    affectsFutureMonths: { type: Boolean, default: false },
-    repeatMonths: { type: String, default: null },
-    description: { type: String, default: null },
+    amount: { type: Number, required: false, default: 0 },
+    affectsFutureMonths: { type: Boolean, required: false, default: false },
+    repeatMonths: { type: String, required: false, default: null },
+    description: { type: String, required: false, default: null },
   },
-  {
-    timestamps: true,
-    collection: "savingsAllocations",
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
-  },
+  { timestamps: true },
 );
 
-savingsAllocationSchema.index(
-  { userId: 1, referenceMonth: 1 },
-  { unique: true },
-);
+savingsAllocationSchema.index({ userId: 1, referenceMonth: 1 }, { unique: true });
+
+await dbConnect();
 
 export const SavingsAllocation =
-  mongoose.models.SavingsAllocation ??
-  mongoose.model(
-    "SavingsAllocation",
-    savingsAllocationSchema,
-    "savingsAllocations",
-  );
+  mongoose.models.savingsallocation ||
+  mongoose.model("savingsallocation", savingsAllocationSchema);

@@ -1,25 +1,23 @@
-import mongoose, { Schema } from "mongoose";
+import { dbConnect } from "@/lib/mongoose";
+import mongoose from "mongoose";
 
-const expenseGroupSchema = new Schema(
+const expenseGroupSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true },
     referenceMonth: { type: String, required: true },
     name: { type: String, required: true },
-    monthlyAmount: { type: Number, default: 0 },
-    affectsFutureMonths: { type: Boolean, default: false },
-    repeatMonths: { type: String, default: null },
-    color: { type: String, default: "#18181b" },
-    description: { type: String, default: null },
+    monthlyAmount: { type: Number, required: false, default: 0 },
+    affectsFutureMonths: { type: Boolean, required: false, default: false },
+    repeatMonths: { type: String, required: false, default: null },
+    color: { type: String, required: false, default: "#18181b" },
+    description: { type: String, required: false, default: null },
   },
-  {
-    timestamps: true,
-    collection: "expenseGroups",
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
-  },
+  { timestamps: true },
 );
 
 expenseGroupSchema.index({ userId: 1, referenceMonth: 1 });
 
-delete mongoose.models.ExpenseGroup;
-export const ExpenseGroup = mongoose.model("ExpenseGroup", expenseGroupSchema, "expenseGroups");
+await dbConnect();
+
+export const ExpenseGroup =
+  mongoose.models.expensegroup || mongoose.model("expensegroup", expenseGroupSchema);
