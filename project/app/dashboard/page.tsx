@@ -1,7 +1,6 @@
 import { auth } from "@/auth";
 import { dbConnect } from "@/lib/mongoose";
 import { User } from "@/lib/models/user";
-import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 import { ExpenseGroup } from "@/lib/models/expense-group";
 import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
 import { Expense } from "@/lib/models/expense";
@@ -76,11 +75,6 @@ function getInstallmentAmounts(totalAmount: number, installmentCount: number) {
 }
 
 
-type FinanceProfileLean = {
-  currency: string;
-  paydayStart: number | null;
-};
-
 type ExpenseGroupLean = {
   _id: { toString(): string };
   referenceMonth: string;
@@ -116,33 +110,28 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   await dbConnect();
   const user = await User.findOne({ email: session.user.email })
-    .select("_id")
-    .lean<{ _id: { toString(): string } }>();
+    .select("_id currency paydayStart")
+    .lean<{ _id: { toString(): string }; currency: string; paydayStart: number | null }>();
 
   if (!user) redirect("/login");
   const userId = user._id.toString();
 
-  const [financeProfile, incomeReceiptForCalendarMonth] = await Promise.all([
-    UserFinanceProfile.findOne({ userId })
-      .select("currency paydayStart")
-      .lean<FinanceProfileLean>(),
-    IncomeReceipt.findOne({
-      userId,
-      referenceMonth: getCalendarMonth(),
-    }).lean(),
-  ]);
+  const incomeReceiptForCalendarMonth = await IncomeReceipt.findOne({
+    userId,
+    referenceMonth: getCalendarMonth(),
+  }).lean();
 
   const incomeConfirmed = incomeReceiptForCalendarMonth !== null;
   const calendarMonth = getCalendarMonth();
   const selectedMonth = normalizeReferenceMonth(
     params?.month,
-    financeProfile?.paydayStart ?? null,
+    user.paydayStart,
     incomeConfirmed,
   );
 
   // Show banner when payday has arrived but income hasn't been confirmed yet
   const today = new Date();
-  const paydayStart = financeProfile?.paydayStart ?? null;
+  const paydayStart = user.paydayStart;
   const showReceiptBanner =
     paydayStart !== null &&
     today.getDate() >= paydayStart &&
@@ -196,7 +185,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const { start: monthStart, end: monthEnd } = getPaydayMonthRange(
     selectedMonth,
-    financeProfile?.paydayStart ?? null,
+    user.paydayStart,
   );
   const [actualExpensesAgg] = await Expense.aggregate<{
     totalAmount: number;
@@ -206,7 +195,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     { $group: { _id: null, totalAmount: { $sum: "$amount" }, count: { $sum: 1 } } },
   ]);
 
-  const currency = financeProfile?.currency ?? "BRL";
+  const currency = user.currency;
   const fmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency });
 
   const totalIncome = plannedIncomeEntries

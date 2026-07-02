@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { dbConnect } from "@/lib/mongoose";
 import { User } from "@/lib/models/user";
-import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 
 import { FinanceProfileManager } from "./finance-profile-manager";
 import { ProfileForm } from "./profile-form";
@@ -17,32 +16,32 @@ export default async function ProfilePage() {
 
   await dbConnect();
   const user = await User.findOne({ email: session.user.email })
-    .select("_id name email image")
-    .lean<{ _id: { toString(): string }; name: string | null; email: string | null; image: string | null }>();
+    .select("_id name email image currency paydayStart paydayEnd notes financeProfileCompletedAt updatedAt")
+    .lean<{
+      _id: { toString(): string };
+      name: string | null;
+      email: string | null;
+      image: string | null;
+      currency: string;
+      paydayStart: number | null;
+      paydayEnd: number | null;
+      notes: string | null;
+      financeProfileCompletedAt: Date | null;
+      updatedAt: Date;
+    }>();
 
   if (!user) {
     redirect("/login");
   }
 
-  const fp = await UserFinanceProfile.findOne({ userId: user._id.toString() })
-    .select("_id currency paydayStart paydayEnd notes updatedAt")
-    .lean<{
-      _id: { toString(): string };
-      currency: string;
-      paydayStart: number | null;
-      paydayEnd: number | null;
-      notes: string | null;
-      updatedAt: Date;
-    }>();
-
-  const profile = fp
+  const profile = user.financeProfileCompletedAt
     ? {
-        id: fp._id.toString(),
-        currency: fp.currency,
-        paydayStart: fp.paydayStart,
-        paydayEnd: fp.paydayEnd,
-        notes: fp.notes,
-        updatedAt: fp.updatedAt.toISOString(),
+        id: user._id.toString(),
+        currency: user.currency,
+        paydayStart: user.paydayStart,
+        paydayEnd: user.paydayEnd,
+        notes: user.notes,
+        updatedAt: user.updatedAt.toISOString(),
       }
     : null;
 

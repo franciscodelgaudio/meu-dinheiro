@@ -3,7 +3,6 @@
 import { auth } from "@/auth";
 import { dbConnect } from "@/lib/mongoose";
 import { User } from "@/lib/models/user";
-import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 import { revalidatePath } from "next/cache";
 
 export type FinanceActionState = {
@@ -73,10 +72,17 @@ export async function createFinanceProfile(
   const input = parseFinanceInput(formData);
   if (typeof input === "string") return { status: "error", message: input };
 
-  const existingProfile = await UserFinanceProfile.findOne({ userId }).select("_id").lean();
-  if (existingProfile) return { status: "error", message: "Voce ja tem um perfil financeiro." };
+  const existingUser = await User.findOne({ _id: userId })
+    .select("financeProfileCompletedAt")
+    .lean<{ financeProfileCompletedAt: Date | null }>();
+  if (existingUser?.financeProfileCompletedAt) {
+    return { status: "error", message: "Voce ja tem um perfil financeiro." };
+  }
 
-  await UserFinanceProfile.create({ userId, ...input });
+  await User.updateOne(
+    { _id: userId },
+    { $set: { ...input, financeProfileCompletedAt: new Date() } },
+  );
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/profile");
@@ -94,7 +100,10 @@ export async function updateFinanceProfile(
   const input = parseFinanceInput(formData);
   if (typeof input === "string") return { status: "error", message: input };
 
-  const result = await UserFinanceProfile.updateOne({ userId }, { $set: input });
+  const result = await User.updateOne(
+    { _id: userId, financeProfileCompletedAt: { $ne: null } },
+    { $set: input },
+  );
 
   if (result.matchedCount === 0) return { status: "error", message: "Crie o perfil antes de atualizar." };
 
@@ -108,9 +117,20 @@ export async function deleteFinanceProfile(): Promise<FinanceActionState> {
   const userId = await getCurrentUserId();
   if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
-  const result = await UserFinanceProfile.deleteOne({ userId });
+  const result = await User.updateOne(
+    { _id: userId, financeProfileCompletedAt: { $ne: null } },
+    {
+      $set: {
+        currency: "BRL",
+        paydayStart: null,
+        paydayEnd: null,
+        notes: null,
+        financeProfileCompletedAt: null,
+      },
+    },
+  );
 
-  if (result.deletedCount === 0) return { status: "error", message: "Nenhum perfil financeiro encontrado." };
+  if (result.matchedCount === 0) return { status: "error", message: "Nenhum perfil financeiro encontrado." };
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/profile");

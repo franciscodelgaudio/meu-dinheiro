@@ -5,7 +5,6 @@ import { ArrowLeft, CircleDollarSign } from "lucide-react";
 import { auth } from "@/auth";
 import { dbConnect } from "@/lib/mongoose";
 import { User } from "@/lib/models/user";
-import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 
 import { FirstAccessForm } from "./first-access-form";
 
@@ -18,18 +17,20 @@ export default async function FirstAccessPage() {
 
   await dbConnect();
   const user = await User.findOne({ email: session.user.email })
-    .select("_id name email image")
-    .lean<{ _id: { toString(): string }; name: string | null; email: string | null; image: string | null }>();
+    .select("_id name email image financeProfileCompletedAt")
+    .lean<{
+      _id: { toString(): string };
+      name: string | null;
+      email: string | null;
+      image: string | null;
+      financeProfileCompletedAt: Date | null;
+    }>();
 
   if (!user) {
     redirect("/login");
   }
 
-  const financeProfile = await UserFinanceProfile.findOne({ userId: user._id.toString() })
-    .select("_id")
-    .lean();
-
-  if (financeProfile) {
+  if (user.financeProfileCompletedAt) {
     redirect("/dashboard");
   }
 

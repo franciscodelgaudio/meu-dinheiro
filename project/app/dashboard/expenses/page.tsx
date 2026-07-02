@@ -1,7 +1,6 @@
 import { auth } from "@/auth";
 import { dbConnect } from "@/lib/mongoose";
 import { User } from "@/lib/models/user";
-import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 import { IncomeReceipt } from "@/lib/models/income-receipt";
 import { ExpenseGroup } from "@/lib/models/expense-group";
 import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
@@ -29,11 +28,6 @@ function normalizeReferenceMonth(
   if (month && /^\d{4}-\d{2}$/.test(month)) return month;
   return getEffectiveCurrentMonth(paydayStart, incomeConfirmed);
 }
-
-type FinanceProfileLean = {
-  currency: string;
-  paydayStart: number | null;
-};
 
 type ExpenseGroupLean = {
   _id: { toString(): string };
@@ -72,33 +66,28 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
   await dbConnect();
   const user = await User.findOne({ email: session.user.email })
-    .select("_id")
-    .lean<{ _id: { toString(): string } }>();
+    .select("_id currency paydayStart")
+    .lean<{ _id: { toString(): string }; currency: string; paydayStart: number | null }>();
 
   if (!user) {
     redirect("/login");
   }
   const userId = user._id.toString();
 
-  const [financeProfile, incomeReceipt] = await Promise.all([
-    UserFinanceProfile.findOne({ userId })
-      .select("currency paydayStart")
-      .lean<FinanceProfileLean>(),
-    IncomeReceipt.findOne({
-      userId,
-      referenceMonth: getCalendarMonth(),
-    }).lean(),
-  ]);
+  const incomeReceipt = await IncomeReceipt.findOne({
+    userId,
+    referenceMonth: getCalendarMonth(),
+  }).lean();
 
   const selectedMonth = normalizeReferenceMonth(
     params?.month,
-    financeProfile?.paydayStart ?? null,
+    user.paydayStart,
     incomeReceipt !== null,
   );
 
   const rawPage = Array.isArray(params?.page) ? params.page[0] : params?.page;
   const currentPage = Math.max(1, parseInt(rawPage ?? "1", 10) || 1);
-  const monthRange = getPaydayMonthRange(selectedMonth, financeProfile?.paydayStart ?? null);
+  const monthRange = getPaydayMonthRange(selectedMonth, user.paydayStart);
   const expenseGroups = await ExpenseGroup.find({
     userId,
     $or: [
@@ -250,7 +239,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         expenses={expenseItems}
         commonExpenses={commonExpenses}
         selectedMonth={selectedMonth}
-        currency={financeProfile?.currency ?? "BRL"}
+        currency={user.currency}
         totalExpenses={totalExpenses}
         currentPage={currentPage}
       />

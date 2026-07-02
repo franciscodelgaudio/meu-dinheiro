@@ -7,7 +7,12 @@ const userSchema = new Schema(
     emailVerified: { type: Date, default: null },
     image: { type: String, default: null },
     currency: { type: String, default: "BRL" },
-    payday: { type: Number, default: null },
+    paydayStart: { type: Number, default: null },
+    paydayEnd: { type: Number, default: null },
+    notes: { type: String, default: null },
+    // Marca quando o usuario concluiu o onboarding financeiro (first-access).
+    // null = ainda nao configurou; usado para decidir o redirect em /dashboard.
+    financeProfileCompletedAt: { type: Date, default: null },
   },
   {
     timestamps: true,

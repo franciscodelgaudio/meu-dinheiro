@@ -1,7 +1,6 @@
 import { auth } from "@/auth";
 import { dbConnect } from "@/lib/mongoose";
 import { User } from "@/lib/models/user";
-import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 import { CreditCardPurchase } from "@/lib/models/credit-card-purchase";
 import { Expense } from "@/lib/models/expense";
 import { IncomeReceipt } from "@/lib/models/income-receipt";
@@ -48,24 +47,19 @@ export default async function DebtsPage({ searchParams }: DebtsPageProps) {
 
   await dbConnect();
   const user = await User.findOne({ email: session.user.email })
-    .select("_id")
-    .lean<{ _id: { toString(): string } }>();
+    .select("_id currency paydayStart")
+    .lean<{ _id: { toString(): string }; currency: string; paydayStart: number | null }>();
 
   if (!user) redirect("/login");
 
   const userId = user._id.toString();
   const calendarMonth = getCalendarMonth();
 
-  const [financeProfile, incomeReceipt] = await Promise.all([
-    UserFinanceProfile.findOne({ userId })
-      .select("currency paydayStart")
-      .lean<{ currency: string; paydayStart: number | null }>(),
-    IncomeReceipt.findOne({ userId, referenceMonth: calendarMonth }).lean(),
-  ]);
+  const incomeReceipt = await IncomeReceipt.findOne({ userId, referenceMonth: calendarMonth }).lean();
 
   const selectedMonth = normalizeReferenceMonth(
     params?.month,
-    financeProfile?.paydayStart ?? null,
+    user.paydayStart,
     incomeReceipt !== null,
   );
 
@@ -151,7 +145,7 @@ export default async function DebtsPage({ searchParams }: DebtsPageProps) {
       <DebtsManager
         debts={debtItems}
         selectedMonth={selectedMonth}
-        currency={financeProfile?.currency ?? "BRL"}
+        currency={user.currency}
       />
     </main>
   );

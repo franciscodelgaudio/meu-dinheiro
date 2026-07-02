@@ -59,8 +59,7 @@ async function getCurrentUserId() {
 }
 
 async function getPaydayStart(userId: string): Promise<number | null> {
-  const { UserFinanceProfile } = await import("@/lib/models/user-finance-profile");
-  const profile = await UserFinanceProfile.findOne({ userId })
+  const profile = await User.findOne({ _id: userId })
     .select("paydayStart")
     .lean<{ paydayStart?: number | null }>();
   return profile?.paydayStart ?? null;

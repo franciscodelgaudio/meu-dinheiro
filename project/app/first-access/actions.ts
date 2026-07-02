@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { auth, unstable_update as updateSession } from "@/auth";
 import { dbConnect } from "@/lib/mongoose";
 import { User } from "@/lib/models/user";
-import { UserFinanceProfile } from "@/lib/models/user-finance-profile";
 
 export type FirstAccessActionState = {
   status?: "success" | "error";
@@ -88,18 +87,19 @@ export async function completeFirstAccess(
 
   const updatedUser = await User.findOneAndUpdate(
     { _id: userId },
-    { $set: { name, email } },
+    {
+      $set: {
+        name,
+        email,
+        currency,
+        paydayStart,
+        paydayEnd,
+        notes,
+        financeProfileCompletedAt: new Date(),
+      },
+    },
     { new: true, select: "name email image" },
   ).lean<{ name: string | null; email: string | null; image: string | null }>();
-
-  await UserFinanceProfile.findOneAndUpdate(
-    { userId },
-    {
-      $set: { currency, paydayStart, paydayEnd, notes },
-      $setOnInsert: { userId },
-    },
-    { upsert: true, new: true },
-  );
 
   if (updatedUser) {
     await updateSession({
