@@ -79,11 +79,13 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     referenceMonth: getCalendarMonth(),
   }).lean();
 
+  const effectiveCurrentMonth = getEffectiveCurrentMonth(user.paydayStart, incomeReceipt !== null);
   const selectedMonth = normalizeReferenceMonth(
     params?.month,
     user.paydayStart,
     incomeReceipt !== null,
   );
+  const isCurrentPeriod = selectedMonth === effectiveCurrentMonth;
 
   const rawPage = Array.isArray(params?.page) ? params.page[0] : params?.page;
   const currentPage = Math.max(1, parseInt(rawPage ?? "1", 10) || 1);
@@ -239,6 +241,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         expenses={expenseItems}
         commonExpenses={commonExpenses}
         selectedMonth={selectedMonth}
+        isCurrentPeriod={isCurrentPeriod}
         currency={user.currency}
         totalExpenses={totalExpenses}
         currentPage={currentPage}

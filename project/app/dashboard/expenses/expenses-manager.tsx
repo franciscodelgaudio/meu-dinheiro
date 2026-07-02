@@ -138,6 +138,7 @@ type ExpensesManagerProps = {
   expenses: ExpenseView[];
   commonExpenses: CommonExpenseTemplate[];
   selectedMonth: string;
+  isCurrentPeriod: boolean;
   currency: string;
   totalExpenses: number;
   currentPage: number;
@@ -174,14 +175,12 @@ function formatReferenceMonth(referenceMonth: string) {
   }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
-function getDefaultSpentAt(selectedMonth: string) {
-  const today = new Date();
-  const currentMonth = `${today.getFullYear()}-${String(
-    today.getMonth() + 1,
-  ).padStart(2, "0")}`;
-
-  if (selectedMonth === currentMonth) {
-    return `${selectedMonth}-${String(today.getDate()).padStart(2, "0")}`;
+function getDefaultSpentAt(selectedMonth: string, isCurrentPeriod: boolean) {
+  if (isCurrentPeriod) {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
+      today.getDate(),
+    ).padStart(2, "0")}`;
   }
 
   return `${selectedMonth}-01`;
@@ -527,6 +526,7 @@ function ExpenseDialog({
   commonExpenses,
   currency,
   selectedMonth,
+  isCurrentPeriod = false,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
 }: {
@@ -535,6 +535,7 @@ function ExpenseDialog({
   commonExpenses?: CommonExpenseTemplate[];
   currency: string;
   selectedMonth: string;
+  isCurrentPeriod?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -545,7 +546,7 @@ function ExpenseDialog({
   const setOpen = isControlled ? controlledOnOpenChange! : setUncontrolledOpen;
   const defaultSpentAt = expense
     ? formatDateInput(expense.spentAt)
-    : getDefaultSpentAt(selectedMonth);
+    : getDefaultSpentAt(selectedMonth, isCurrentPeriod);
   const [selectedGroupId, setSelectedGroupId] = useState(
     expense?.expenseGroupId ?? groups[0]?.id ?? "",
   );
@@ -766,7 +767,13 @@ function ExpenseDialog({
   );
 }
 
-function CreditCardExpenseDialog({ selectedMonth }: { selectedMonth: string }) {
+function CreditCardExpenseDialog({
+  selectedMonth,
+  isCurrentPeriod,
+}: {
+  selectedMonth: string;
+  isCurrentPeriod: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [state, formAction, isPending] = useActionState(
@@ -814,7 +821,7 @@ function CreditCardExpenseDialog({ selectedMonth }: { selectedMonth: string }) {
                 id="card-purchasedAt"
                 name="purchasedAt"
                 type="date"
-                defaultValue={getDefaultSpentAt(selectedMonth)}
+                defaultValue={getDefaultSpentAt(selectedMonth, isCurrentPeriod)}
                 required
               />
             </div>
@@ -1021,6 +1028,7 @@ export function ExpensesManager({
   expenses,
   commonExpenses,
   selectedMonth,
+  isCurrentPeriod,
   currency,
   totalExpenses,
   currentPage,
@@ -1075,11 +1083,12 @@ export function ExpensesManager({
                 commonExpenses={commonExpenses}
                 currency={currency}
                 selectedMonth={selectedMonth}
+                isCurrentPeriod={isCurrentPeriod}
               />
             </div>
             <div className="flex items-center gap-2 border-t border-zinc-100 pt-3">
               <MonthSelector selectedMonth={selectedMonth} />
-              <CreditCardExpenseDialog selectedMonth={selectedMonth} />
+              <CreditCardExpenseDialog selectedMonth={selectedMonth} isCurrentPeriod={isCurrentPeriod} />
             </div>
           </CardHeader>
           <CardContent className="px-3 py-0 sm:p-6 sm:pt-0">
