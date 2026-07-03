@@ -3,6 +3,7 @@
 import { auth } from "@/auth";
 import { dbConnect } from "@/lib/mongoose";
 import { User } from "@/lib/models/user";
+import { byId } from "@/lib/db-id";
 import { revalidatePath } from "next/cache";
 
 export type FinanceActionState = {
@@ -72,7 +73,7 @@ export async function createFinanceProfile(
   const input = parseFinanceInput(formData);
   if (typeof input === "string") return { status: "error", message: input };
 
-  const existingUser = await User.findOne({ _id: userId })
+  const existingUser = await User.findOne({ ...byId(userId) })
     .select("financeProfileCompletedAt")
     .lean<{ financeProfileCompletedAt: Date | null }>();
   if (existingUser?.financeProfileCompletedAt) {
@@ -80,7 +81,7 @@ export async function createFinanceProfile(
   }
 
   await User.updateOne(
-    { _id: userId },
+    { ...byId(userId) },
     { $set: { ...input, financeProfileCompletedAt: new Date() } },
   );
 
@@ -101,7 +102,7 @@ export async function updateFinanceProfile(
   if (typeof input === "string") return { status: "error", message: input };
 
   const result = await User.updateOne(
-    { _id: userId, financeProfileCompletedAt: { $ne: null } },
+    { ...byId(userId), financeProfileCompletedAt: { $ne: null } },
     { $set: input },
   );
 
@@ -118,7 +119,7 @@ export async function deleteFinanceProfile(): Promise<FinanceActionState> {
   if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   const result = await User.updateOne(
-    { _id: userId, financeProfileCompletedAt: { $ne: null } },
+    { ...byId(userId), financeProfileCompletedAt: { $ne: null } },
     {
       $set: {
         currency: "BRL",

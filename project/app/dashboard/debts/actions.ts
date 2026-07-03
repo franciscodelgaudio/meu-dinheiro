@@ -7,6 +7,7 @@ import { ExpenseGroup } from "@/lib/models/expense-group";
 import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
 import { Expense } from "@/lib/models/expense";
 import { CreditCardPurchase } from "@/lib/models/credit-card-purchase";
+import { byId } from "@/lib/db-id";
 import { revalidatePath } from "next/cache";
 
 export type DebtActionState = {
@@ -313,7 +314,7 @@ export async function updateDebt(
   if (typeof input === "string") return { status: "error", message: input };
 
   await dbConnect();
-  const existing = await CreditCardPurchase.findOne({ _id: id, userId, kind: "debt" })
+  const existing = await CreditCardPurchase.findOne({ ...byId(id), userId, kind: "debt" })
     .select("_id expenseGroupId firstInstallmentMonth installmentCount")
     .lean<{ _id: { toString(): string }; expenseGroupId: string; firstInstallmentMonth: string; installmentCount: number }>();
 
@@ -325,7 +326,7 @@ export async function updateDebt(
   const installmentAmounts = getInstallmentAmounts(input.totalAmount, input.installmentCount);
 
   await CreditCardPurchase.updateOne(
-    { _id: existing._id.toString() },
+    { ...byId(existing._id.toString()) },
     {
       $set: {
         source: input.source,
@@ -359,7 +360,7 @@ export async function deleteDebt(id: string): Promise<DebtActionState> {
   if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   await dbConnect();
-  const existing = await CreditCardPurchase.findOne({ _id: id, userId, kind: "debt" })
+  const existing = await CreditCardPurchase.findOne({ ...byId(id), userId, kind: "debt" })
     .select("_id expenseGroupId firstInstallmentMonth installmentCount")
     .lean<{ _id: { toString(): string }; expenseGroupId: string; firstInstallmentMonth: string; installmentCount: number }>();
 
@@ -368,7 +369,7 @@ export async function deleteDebt(id: string): Promise<DebtActionState> {
   const months = getPurchaseMonths(existing.firstInstallmentMonth, existing.installmentCount);
 
   await Expense.deleteMany({ creditCardPurchaseId: existing._id.toString() });
-  await CreditCardPurchase.deleteOne({ _id: existing._id.toString() });
+  await CreditCardPurchase.deleteOne({ ...byId(existing._id.toString()) });
   await syncMonths(userId, existing.expenseGroupId, "debt", DEBT_GROUP_NAME, DEBT_GROUP_COLOR, months);
 
   revalidatePath("/dashboard");
@@ -395,7 +396,7 @@ export async function updateCreditCardPurchase(
   if (typeof input === "string") return { status: "error", message: input };
 
   await dbConnect();
-  const existing = await CreditCardPurchase.findOne({ _id: id, userId, kind: "credit_card" })
+  const existing = await CreditCardPurchase.findOne({ ...byId(id), userId, kind: "credit_card" })
     .select("_id expenseGroupId firstInstallmentMonth installmentCount")
     .lean<{ _id: { toString(): string }; expenseGroupId: string; firstInstallmentMonth: string; installmentCount: number }>();
 
@@ -407,7 +408,7 @@ export async function updateCreditCardPurchase(
   const installmentAmounts = getInstallmentAmounts(input.totalAmount, input.installmentCount);
 
   await CreditCardPurchase.updateOne(
-    { _id: existing._id.toString() },
+    { ...byId(existing._id.toString()) },
     {
       $set: {
         purchasedAt: input.purchasedAt,
@@ -443,7 +444,7 @@ export async function deleteCreditCardPurchase(id: string): Promise<DebtActionSt
   if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   await dbConnect();
-  const existing = await CreditCardPurchase.findOne({ _id: id, userId, kind: "credit_card" })
+  const existing = await CreditCardPurchase.findOne({ ...byId(id), userId, kind: "credit_card" })
     .select("_id expenseGroupId firstInstallmentMonth installmentCount")
     .lean<{ _id: { toString(): string }; expenseGroupId: string; firstInstallmentMonth: string; installmentCount: number }>();
 
@@ -452,7 +453,7 @@ export async function deleteCreditCardPurchase(id: string): Promise<DebtActionSt
   const months = getPurchaseMonths(existing.firstInstallmentMonth, existing.installmentCount);
 
   await Expense.deleteMany({ creditCardPurchaseId: existing._id.toString() });
-  await CreditCardPurchase.deleteOne({ _id: existing._id.toString() });
+  await CreditCardPurchase.deleteOne({ ...byId(existing._id.toString()) });
   await syncMonths(
     userId,
     existing.expenseGroupId,
@@ -492,7 +493,7 @@ export async function payInstallment(
   }
 
   await dbConnect();
-  const purchase = await CreditCardPurchase.findOne({ _id: creditCardPurchaseId, userId })
+  const purchase = await CreditCardPurchase.findOne({ ...byId(creditCardPurchaseId), userId })
     .select("_id title totalAmount installmentCount expenseGroupId")
     .lean<{
       _id: { toString(): string };
@@ -549,11 +550,11 @@ export async function unpayInstallment(expenseId: string): Promise<DebtActionSta
   if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   await dbConnect();
-  const expense = await Expense.findOne({ _id: expenseId, userId }).select("_id").lean();
+  const expense = await Expense.findOne({ ...byId(expenseId), userId }).select("_id").lean();
 
   if (!expense) return { status: "error", message: "Pagamento nao encontrado." };
 
-  await Expense.deleteOne({ _id: expenseId });
+  await Expense.deleteOne({ ...byId(expenseId) });
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/debts");

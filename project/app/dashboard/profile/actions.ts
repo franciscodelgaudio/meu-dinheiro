@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { auth, unstable_update as updateSession } from "@/auth";
 import { dbConnect } from "@/lib/mongoose";
 import { User } from "@/lib/models/user";
+import { byId } from "@/lib/db-id";
 
 export type ProfileActionState = {
   status?: "success" | "error";
@@ -69,7 +70,7 @@ export async function updateProfile(
   }
 
   const updatedUser = await User.findOneAndUpdate(
-    { _id: userId },
+    { ...byId(userId) },
     { $set: { name, email, image } },
     { new: true, select: "name email image" },
   ).lean<{ name: string | null; email: string | null; image: string | null }>();

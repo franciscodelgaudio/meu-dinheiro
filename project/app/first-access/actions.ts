@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { auth, unstable_update as updateSession } from "@/auth";
 import { dbConnect } from "@/lib/mongoose";
 import { User } from "@/lib/models/user";
+import { byId } from "@/lib/db-id";
 
 export type FirstAccessActionState = {
   status?: "success" | "error";
@@ -86,7 +87,7 @@ export async function completeFirstAccess(
   }
 
   const updatedUser = await User.findOneAndUpdate(
-    { _id: userId },
+    { ...byId(userId) },
     {
       $set: {
         name,

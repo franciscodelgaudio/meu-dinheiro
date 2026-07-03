@@ -7,6 +7,7 @@ import { ExpenseGroup } from "@/lib/models/expense-group";
 import { ExpenseGroupOverride } from "@/lib/models/expense-group-override";
 import { Expense } from "@/lib/models/expense";
 import { CreditCardPurchase } from "@/lib/models/credit-card-purchase";
+import { byId } from "@/lib/db-id";
 import { revalidatePath, revalidateTag } from "next/cache";
 import {
   analyzeQuickExpenseWithAI,
@@ -59,7 +60,7 @@ async function getCurrentUserId() {
 }
 
 async function getPaydayStart(userId: string): Promise<number | null> {
-  const profile = await User.findOne({ _id: userId })
+  const profile = await User.findOne({ ...byId(userId) })
     .select("paydayStart")
     .lean<{ paydayStart?: number | null }>();
   return profile?.paydayStart ?? null;
@@ -422,7 +423,7 @@ export async function updateExpense(
 
   if (!group) return { status: "error", message: "Grupo de despesas nao encontrado." };
 
-  const result = await Expense.updateOne({ _id: id, userId }, { $set: input });
+  const result = await Expense.updateOne({ ...byId(id), userId }, { $set: input });
 
   if (result.matchedCount === 0) return { status: "error", message: "Gasto nao encontrado." };
 
@@ -438,7 +439,7 @@ export async function deleteExpense(id: string): Promise<ExpenseActionState> {
   if (!userId) return { status: "error", message: "Sua sessao expirou. Entre novamente." };
 
   await dbConnect();
-  const expense = await Expense.findOne({ _id: id, userId })
+  const expense = await Expense.findOne({ ...byId(id), userId })
     .select("expenseGroupId spentAt creditCardPurchaseId")
     .lean<{
       expenseGroupId: string;
@@ -452,7 +453,7 @@ export async function deleteExpense(id: string): Promise<ExpenseActionState> {
     .select("name")
     .lean<{ name: string }>();
 
-  await Expense.deleteOne({ _id: id });
+  await Expense.deleteOne({ ...byId(id) });
 
   if (expense.creditCardPurchaseId || group?.name === CREDIT_CARD_GROUP_NAME) {
     const referenceMonth = `${expense.spentAt.getUTCFullYear()}-${String(expense.spentAt.getUTCMonth() + 1).padStart(2, "0")}`;
