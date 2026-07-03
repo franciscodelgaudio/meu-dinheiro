@@ -129,13 +129,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     incomeConfirmed,
   );
 
-  // Show banner when payday has arrived but income hasn't been confirmed yet
-  const today = new Date();
-  const paydayStart = user.paydayStart;
-  const showReceiptBanner =
-    paydayStart !== null &&
-    today.getDate() >= paydayStart &&
-    !incomeConfirmed;
+  // Show the banner whenever this calendar month's income hasn't been confirmed
+  // yet. It stays available even before paydayStart so an early payment can be
+  // confirmed, advancing the period instead of leaving the user stuck.
+  const showReceiptBanner = user.paydayStart !== null && !incomeConfirmed;
   const expenseGroups = await ExpenseGroup.find({
     userId,
     $or: [

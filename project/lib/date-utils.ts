@@ -22,19 +22,19 @@ export function getEffectiveCurrentMonth(
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
-  const day = now.getDate();
 
   const calendarMonth = `${year}-${String(month).padStart(2, "0")}`;
 
   if (!paydayStart) return calendarMonth;
 
-  // Still before payday OR payday arrived but not yet confirmed → previous month
-  if (day < paydayStart || !incomeConfirmedForCalendarMonth) {
-    const prev = new Date(Date.UTC(year, month - 2, 1));
-    return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}`;
-  }
+  // Confirming income receipt is the single source of truth for turning the
+  // financial month over. Until it's confirmed we stay on the previous month;
+  // once confirmed we advance regardless of the day, which also covers early
+  // payments (received before paydayStart).
+  if (incomeConfirmedForCalendarMonth) return calendarMonth;
 
-  return calendarMonth;
+  const prev = new Date(Date.UTC(year, month - 2, 1));
+  return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 export function getPaydayMonthRange(
