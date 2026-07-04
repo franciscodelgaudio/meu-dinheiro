@@ -126,7 +126,17 @@ function getTodayISO() {
 }
 
 function getDefaultPaymentDate(selectedMonth: string, paymentDay: number | null): string {
-  if (!paymentDay) return getTodayISO();
+  const today = getTodayISO();
+
+  // When registering a payment for the month we're currently in, the payment is
+  // happening now — default to today. The due day (paymentDay) is only shown as
+  // a reminder; using it here would date the payment in the future when the due
+  // day hasn't arrived yet.
+  if (selectedMonth === today.slice(0, 7)) return today;
+
+  // For other (past/future) months, anchor to the due day of that month so the
+  // date stays inside the month being registered.
+  if (!paymentDay) return `${selectedMonth}-01`;
 
   const [year, month] = selectedMonth.split("-").map(Number);
   const daysInMonth = new Date(year, month, 0).getDate();
