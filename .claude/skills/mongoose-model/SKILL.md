@@ -1,213 +1,80 @@
 ---
 name: mongoose-model
-description: Cria arquivos de model do Mongoose seguindo o padrão do projeto (dbConnect, mongoose.models singleton, sub-schemas). Use quando o usuário pedir para criar/adicionar um novo model, schema ou coleção do Mongoose/MongoDB.
+description: Cria arquivos de model do Mongoose (e o zod schema de validação correspondente) seguindo o padrão do projeto (dbConnect, mongoose.models singleton, sub-schemas tipados). Use quando o usuário pedir para criar/adicionar um novo model, schema ou coleção do Mongoose/MongoDB.
 ---
 
 # Mongoose Model
 
-Gera um novo arquivo de model do Mongoose seguindo exatamente o padrão já estabelecido no projeto.
+Gera um novo arquivo de model do Mongoose em TypeScript seguindo exatamente o padrão já estabelecido no projeto, junto com o schema de validação zod correspondente.
 
 ## Convenções do projeto
 
-- **Local do arquivo:** `src/lib/models/`
-- **Nome do arquivo:** PascalCase singular, ex. `Action.js` para o model `actions`.
-- **Nome do model/coleção:** minúsculo plural (ex. `"actions"`, `"plannings"`, `"tasks"`), usado tanto na string do `mongoose.model()` quanto em qualquer `ref` de outro schema.
-- **Nome da const exportada:** PascalCase plural, ex. `export const Actions = ...`.
+- **Local do model:** `lib/models/`
+- **Local da validação:** `lib/validations/`
+- **Nome do arquivo:** kebab-case singular, ex. `expense-group.ts` para o model `expensegroup`.
+- **Nome do model/coleção:** minúsculo plural ou concatenado sem hífen (ex. `"groups"`, `"expensegroup"`), usado tanto na string do `mongoose.model()` quanto em qualquer `ref` de outro schema.
+- **Nome da const exportada:** PascalCase plural, ex. `export const Groups = ...`.
+- **Interface TypeScript:** `I<Nome>` exportada, usada em `mongoose.Schema<I<Nome>>` e `mongoose.model<I<Nome>>`.
 
-## Estrutura obrigatória do arquivo
+## Estrutura obrigatória do model
 
-```js
+```ts
 import { dbConnect } from "@/lib/handler/db";
 import mongoose from "mongoose";
 
-const NomeSchema = new mongoose.Schema({
-    // campos
+export interface INome {
+  // campos
+}
+
+const nomeSchema = new mongoose.Schema<INome>({
+  // campos
 });
 
 await dbConnect();
 
-export const Nome = mongoose.models.nome || mongoose.model("nome", NomeSchema);
+export const Nome =
+  mongoose.models.nome || mongoose.model<INome>("nome", nomeSchema);
 ```
 
 Regras:
+
 1. Sempre importar `dbConnect` de `@/lib/handler/db` e `mongoose` — nesta ordem.
-2. Sempre chamar `await dbConnect();` antes do `export const`.
-3. Sempre registrar o model com o padrão `mongoose.models.<nome> || mongoose.model("<nome>", <Nome>Schema)` para evitar erro de "Cannot overwrite model" em hot reload.
-4. Se o schema tiver sub-objetos repetidos, com validação própria, ou reutilizados em mais de um lugar, extraia-os em `mongoose.Schema` separados e definidos ANTES do schema principal (ex. `DependenciesSchema`, `ProgressSchema` abaixo). Sub-objetos simples e usados uma única vez podem ficar inline (ex. o campo `start` no exemplo).
-5. Referências para outros documentos usam `type: mongoose.Schema.Types.ObjectId` + `ref: "<nome-plural-da-coleção>"`.
-6. Campos com um conjunto fixo de valores usam `enum: [...]` com strings em minúsculo.
-7. Comente apenas o que não é óbvio pelo nome do campo: uma regra de negócio, uma decisão de compatibilidade retroativa, um motivo pelo qual um valor não é recalculado, etc. Escreva o comentário em português, curto, acima do campo. Não descreva o óbvio (ex. não comente `required: true`).
-8. Não adicione validação, defaults ou opções que não foram pedidos — siga só o que o pattern e o pedido do usuário exigem.
+2. Sempre exportar uma `interface I<Nome>` com os campos do documento, usada para tipar o `Schema` e o `model`.
+3. Sempre chamar `await dbConnect();` antes do `export const` (top-level await, suportado pelo Next.js).
+4. Sempre registrar o model com o padrão `mongoose.models.<nome> || mongoose.model<INome>("<nome>", <nome>Schema)` para evitar erro de "Cannot overwrite model" em hot reload.
+5. Se o schema tiver sub-objetos repetidos, com validação própria, ou reutilizados em mais de um lugar, extraia-os em `mongoose.Schema` separados e definidos ANTES do schema principal. Sub-objetos simples e usados uma única vez podem ficar inline.
+6. Referências para outros documentos usam `type: mongoose.Schema.Types.ObjectId` + `ref: "<nome-plural-da-coleção>"`.
+7. Campos com um conjunto fixo de valores usam `enum: [...]` com strings em minúsculo.
+8. Use `{ timestamps: true }` como segundo argumento do `mongoose.Schema` quando o model precisar de `createdAt`/`updatedAt` (padrão para entidades que o usuário cria/edita diretamente).
+9. Comente apenas o que não é óbvio pelo nome do campo: uma regra de negócio, uma decisão de compatibilidade retroativa, um motivo pelo qual um valor não é recalculado, etc. Comentário curto, acima do campo. Não descreva o óbvio (ex. não comente `required: true`).
+10. Não adicione validação, defaults ou opções que não foram pedidos — siga só o que o pattern e o pedido do usuário exigem.
 
-## Exemplo de referência (padrão real do projeto)
+## Estrutura obrigatória da validação zod
 
-`src/lib/models/Action.js`:
+Para cada model, crie o schema de validação de entrada correspondente em `lib/validations/<nome-do-model>.ts`:
 
-```js
-import { dbConnect } from "@/lib/handler/db";
-import mongoose from "mongoose";
+```ts
+import { z } from "zod";
 
-const DependenciesSchema = new mongoose.Schema({
-    actionId: {
-        type: mongoose.Schema.Types.ObjectId,
-        required: true,
-    },
-    position: {
-        type: String,
-        enum: ["start", "end"],
-        required: true,
-    },
-    offset: {
-        type: Number,
-        required: true,
-    },
-    unit: {
-        type: String,
-        enum: ["day", "week", "month", "year", "hour"],
-        required: true,
-    },
-})
-
-const ProgressSchema = new mongoose.Schema({
-    totalPercent: {
-        type: Number,
-        required: true,
-    },
-    milestone: [
-        {
-            percent: {
-                type: Number,
-                required: true,
-            },
-            date: {
-                type: Date,
-                required: true,
-            }
-        }
-    ],
+export const nomeSchema = z.object({
+  // mesmos campos do model, validados na forma como chegam de um form/request
 });
 
-const ActionsSchema = new mongoose.Schema({
-    planningId: {
-        type: mongoose.Schema.Types.ObjectId,
-        required: false,
-        ref: "plannings"
-    },
-    itemId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "items",
-    },
-    taskId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "tasks",
-    },
-    // Quando preenchido, a action vive em um PlanningNode (nível ≥ 4) — a folha
-    // canônica deixa de ser o item e passa a ser esse nó. Quando null, a action
-    // continua sendo folha direta do item (compatibilidade com plannings antigos).
-    nodeId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "planningNodes",
-        default: null,
-        required: false,
-    },
-    name: {
-        type: String,
-    },
-    status: {
-        type: String,
-        enum: ["open", "closed", "pending", "canceled", "paused", "draft"],
-        default: "open",
-    },
-    start: {
-        condition: {
-            type: String,
-            enum: ["date", "action"],
-        },
-        triggerDate: {
-            type: Date,
-            default: null,
-            required: false
-        },
-        triggerActionId: {
-            type: mongoose.Schema.Types.ObjectId,
-            default: null,
-            required: false
-        },
-        triggerPosition: {
-            type: String,
-            enum: ["start", "end"],
-            required: false
-        },
-        offset: {
-            type: Number,
-            default: 0,
-        },
-        unit: {
-            type: String,
-            enum: ["day", "week", "month", "year", "hour"],
-            required: false
-        },
-    },
-    duration: {
-        type: Number,
-        required: true
-    },
-    unit: {
-        type: String,
-        enum: ["day", "week", "month", "year", "hour"],
-        required: true
-    },
-    isPlanned: {
-        type: Boolean,
-        default: false
-    },
-    realStartDate: {
-        type: Date,
-        default: null,
-        required: false,
-    },
-    realEndDate: {
-        type: Date,
-        default: null,
-        required: false,
-    },
-    // Linha de base: cópia congelada das datas planejadas (início/fim) no
-    // momento em que o usuário clica em "Definir linha de base". Servem de
-    // referência histórica e NÃO são recalculadas no replanejamento — só
-    // mudam quando a linha de base é redefinida explicitamente.
-    baselineStartDate: {
-        type: Date,
-        default: null,
-        required: false,
-    },
-    baselineEndDate: {
-        type: Date,
-        default: null,
-        required: false,
-    },
-    index: {
-        type: Number,
-        required: false,
-    },
-    dependencies: {
-        type: [DependenciesSchema],
-        default: [],
-    },
-    progress: {
-        type: ProgressSchema,
-        default: null,
-    },
-})
-
-await dbConnect();
-
-export const Actions = mongoose.models.actions || mongoose.model("actions", ActionsSchema);
+export type NomeInput = z.infer<typeof nomeSchema>;
 ```
+
+Regras:
+
+1. Os campos do zod schema devem espelhar os campos do model (mesmo nome, tipo compatível).
+2. Use `.nullable()` para campos que podem ser `null`, `.default(...)` para os mesmos defaults do model.
+3. IDs recebidos de fora (ex. `userId` vindo de um form) são validados como `z.string()` — a conversão para `ObjectId` acontece na camada que grava no banco, não na validação.
+4. Exporte o tipo inferido (`z.infer<typeof nomeSchema>`) para reaproveitar em actions/handlers.
 
 ## Fluxo ao criar um novo model
 
 1. Descubra com o usuário (ou pelo pedido) o nome da entidade e os campos/tipos/relações desejados. Se algo for ambíguo (nome de outra coleção referenciada, se um campo é obrigatório, se precisa de enum), pergunte antes de inventar.
-2. Verifique se já existe um model com nome parecido em `src/lib/models/` para reaproveitar convenções de nomes de `ref` já usadas no projeto.
-3. Monte o arquivo seguindo a "Estrutura obrigatória" e o exemplo acima.
-4. Salve em `src/lib/models/<NomePascalSingular>.js`.
-5. Não crie testes, index de re-export ou documentação extra a menos que pedido.
+2. Verifique se já existe um model com nome parecido em `lib/models/` para reaproveitar convenções de nomes de `ref` já usadas no projeto.
+3. Monte o arquivo do model seguindo a "Estrutura obrigatória do model" acima.
+4. Salve em `lib/models/<nome-kebab-case-singular>.ts`.
+5. Monte o schema zod correspondente e salve em `lib/validations/<nome-kebab-case-singular>.ts`.
+6. Não crie testes, index de re-export ou documentação extra a menos que pedido.
