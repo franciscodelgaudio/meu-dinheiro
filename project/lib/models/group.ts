@@ -44,17 +44,18 @@ const groupSchema = new mongoose.Schema<IGroup>(
       required: true,
     },
 
+    color: {
+      type: String,
+      required: false,
+      default: "#18181b",
+    },
+
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "users",
       required: true,
     },
 
-    color: {
-      type: String,
-      required: false,
-      default: "#18181b",
-    },
   },
   { timestamps: true },
 );

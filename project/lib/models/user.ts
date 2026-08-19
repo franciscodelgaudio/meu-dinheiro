@@ -2,6 +2,7 @@ import { dbConnect } from "@/lib/handler/db";
 import mongoose from "mongoose";
 
 export interface IUser {
+    id: string;
     name: string;
     email: string | null;
     avatarUrl: string | null;
@@ -9,6 +10,10 @@ export interface IUser {
 
 const userSchema = new mongoose.Schema<IUser>(
     {
+        id: {
+            type: String,
+            required: true,
+        },
         name: {
             type: String,
             required: true,
@@ -17,6 +22,8 @@ const userSchema = new mongoose.Schema<IUser>(
             type: String,
             required: false,
             default: null,
+            unique: true,
+            sparse: true,
         },
         avatarUrl: {
             type: String,
