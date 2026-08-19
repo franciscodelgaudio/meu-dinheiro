@@ -1,19 +1,16 @@
 import { dbConnect } from "@/lib/handler/db";
 import mongoose from "mongoose";
 
-export interface IGroup {
+export interface ICashflow {
   name: string;
   description: string | null;
-  date: {
-    month: string;
-    year: number;
-  }[];
+  date: Date;
   total: number;
-  color: string | null;
+  groupId: mongoose.Types.ObjectId | null;
   userId: mongoose.Types.ObjectId;
 }
 
-const groupSchema = new mongoose.Schema<IGroup>(
+const cashflowSchema = new mongoose.Schema<ICashflow>(
   {
     name: {
       type: String,
@@ -26,28 +23,20 @@ const groupSchema = new mongoose.Schema<IGroup>(
       default: null,
     },
 
-    date: [
-      {
-        month: {
-          type: String,
-          required: true,
-        },
-        year: {
-          type: Number,
-          required: true,
-        },
-      },
-    ],
+    date: {
+      type: Date,
+      default: Date.now,
+    },
 
     total: {
       type: Number,
       required: true,
     },
 
-    color: {
-      type: String,
-      required: false,
-      default: "#18181b",
+    groupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "groups",
+      default: null,
     },
 
     userId: {
@@ -60,9 +49,9 @@ const groupSchema = new mongoose.Schema<IGroup>(
   { timestamps: true },
 );
 
-groupSchema.index({ userId: 1 });
+cashflowSchema.index({ groupId: 1, userId: 1 });
 
 await dbConnect();
 
-export const Groups =
-  mongoose.models.groups || mongoose.model<IGroup>("groups", groupSchema);
+export const Cashflows =
+  mongoose.models.cashflows || mongoose.model<ICashflow>("cashflows", cashflowSchema);
