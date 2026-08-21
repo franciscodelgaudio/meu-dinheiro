@@ -6,6 +6,7 @@ export interface ICashflow {
   description: string | null;
   date: Date;
   total: number;
+  type: "income" | "expense";
   groupId: mongoose.Types.ObjectId | null;
   userId: mongoose.Types.ObjectId;
 }
@@ -33,6 +34,12 @@ const cashflowSchema = new mongoose.Schema<ICashflow>(
       required: true,
     },
 
+    type: {
+      enum: ["income", "expense"],
+      type: String,
+      required: true,
+    },
+
     groupId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "groups",
@@ -49,7 +56,7 @@ const cashflowSchema = new mongoose.Schema<ICashflow>(
   { timestamps: true },
 );
 
-cashflowSchema.index({ groupId: 1, userId: 1 });
+cashflowSchema.index({ groupId: 1, userId: 1, name: 1 });
 
 await dbConnect();
 

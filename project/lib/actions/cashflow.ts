@@ -4,8 +4,9 @@ import { Cashflows } from "@/lib/models/cashflow";
 const CashflowSchema = z.object({
     name: z.string().max(255),
     description: z.string().max(500).optional(),
-    date: z.date(),
+    date: z.coerce.date(),
     total: z.number().min(1),
+    type: z.enum(["income", "expense"]),
     groupId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid groupId").optional(),
     userId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid userId"),
 });
@@ -17,13 +18,14 @@ export async function CreateCashflow(data: z.infer<typeof CashflowSchema>) {
         return { success: false as const, message: "Invalid user data", code: "VALIDATION_ERROR" as const };
     }
 
-    const { name, description, date, total, groupId, userId } = parsedData.data;
+    const { name, description, date, total, type, groupId, userId } = parsedData.data;
 
     const newGroup = {
         name,
         description,
         date,
         total,
+        type,
         groupId,
         userId,
     };
