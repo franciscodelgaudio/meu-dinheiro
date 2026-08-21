@@ -1,31 +1,20 @@
-import { z } from "zod";
 import { Users } from "@/lib/models/user";
 
-const UserSchema = z.object({
-    id: z.string().min(1),
-    name: z.string().max(255),
-    email: z.string().email().optional(),
-    avatarUrl: z.string().url().optional(),
-});
+// Forma estável esperada pelo domínio, independente da versão da API que
+// originou a chamada. Já reflete o banco (firstName/lastName); é cada
+// contrato de versão que mapeia pra isso antes de chamar CreateUser — o
+// split de "name" pra quem ainda fala v1 fica no mapper da v1, não aqui.
+export interface CreateUserInput {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email?: string;
+    avatarUrl?: string;
+}
 
-export async function CreateUser(data: z.infer<typeof UserSchema>) {
-
-    const parsedData = UserSchema.safeParse(data);
-    if (!parsedData.success) {
-        return { success: false as const, message: "Invalid user data", code: "VALIDATION_ERROR" as const };
-    }
-
-    const { id, name, email, avatarUrl } = parsedData.data;
-
-    const newUser = {
-        id,
-        name,
-        email,
-        avatarUrl,
-    }
-
+export async function CreateUser(input: CreateUserInput) {
     try {
-        await Users.create(newUser);
+        await Users.create(input);
         return { success: true as const, message: "User created successfully" };
     } catch (error: any) {
         if (error.code === 11000) {

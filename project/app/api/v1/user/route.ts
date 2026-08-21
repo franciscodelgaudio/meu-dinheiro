@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CreateUser } from "@/lib/actions/user";
+import { CreateUserRequestV1, toCreateUserInput } from "@/lib/contracts/v1/user";
 import { getRateLimiter, getClientIp } from "@/lib/rateLimit";
 import { STATUS_CODES } from "@/lib/statusCode";
 
@@ -29,9 +30,17 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    const data = await request.json();
+    const body = await request.json();
+    const parsedBody = CreateUserRequestV1.safeParse(body);
 
-    const result = await CreateUser(data);
+    if (!parsedBody.success) {
+        return NextResponse.json(
+            { success: false, message: "Invalid user data", code: "VALIDATION_ERROR" },
+            { status: STATUS_CODES.VALIDATION_ERROR },
+        );
+    }
+
+    const result = await CreateUser(toCreateUserInput(parsedBody.data));
 
     if (result.success) {
         return NextResponse.json(result, {
