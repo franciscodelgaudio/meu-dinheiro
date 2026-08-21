@@ -1,14 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CreateUser } from "@/lib/actions/user";
+import { getRateLimiter, getClientIp } from "@/lib/rateLimit";
+import { STATUS_CODES } from "@/lib/statusCode";
 
-const STATUS_CODES = {
-    SUCCESS: 201,
-    VALIDATION_ERROR: 422,
-    CONFLICT: 409,
-    INTERNAL_SERVER_ERROR: 500,
-};
+// Cria usuário é uma rota sem autenticação (ainda não temos auth), por isso
+// o limite é por IP para conter abuso/flood de criação de contas.
+const RATE_LIMIT = 5;
+const RATE_LIMIT_WINDOW_SECONDS = 60;
 
 export async function POST(request: NextRequest) {
+    const ratelimit = await getRateLimiter({
+        key: "user:create",
+        limit: RATE_LIMIT,
+        windowSeconds: RATE_LIMIT_WINDOW_SECONDS,
+    });
+
+    const { success: allowed, reset } = await ratelimit.limit(getClientIp(request));
+
+    if (!allowed) {
+        const retryAfterSeconds = Math.max(0, Math.ceil((reset - Date.now()) / 1000));
+
+        return NextResponse.json(
+            { success: false, message: "Too many requests", code: "TOO_MANY_REQUESTS" },
+            {
+                status: STATUS_CODES.TOO_MANY_REQUESTS,
+                headers: { "Retry-After": String(retryAfterSeconds) },
+            },
+        );
+    }
+
     const data = await request.json();
 
     const result = await CreateUser(data);
