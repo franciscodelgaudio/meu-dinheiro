@@ -1,37 +1,31 @@
 import { z } from "zod";
-import { Cashflows } from "@/lib/models/cashflow";
+import { Groups } from "@/lib/models/group";
+import { CreateGroupRequestV1 } from "@/lib/contracts/v1/group";
 
-const CashflowSchema = z.object({
-    name: z.string().max(255),
-    description: z.string().max(500).optional(),
-    date: z.coerce.date(),
-    total: z.number().min(1),
-    type: z.enum(["income", "expense"]),
-    groupId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid groupId").optional(),
+const GroupSchema = CreateGroupRequestV1.extend({
     userId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid userId"),
 });
 
-export async function CreateCashflow(data: z.infer<typeof CashflowSchema>) {
+export async function CreateGroup(data: z.infer<typeof GroupSchema>) {
 
-    const parsedData = CashflowSchema.safeParse(data);
+    const parsedData = GroupSchema.safeParse(data);
     if (!parsedData.success) {
         return { success: false as const, message: "Invalid user data", code: "VALIDATION_ERROR" as const };
     }
 
-    const { name, description, date, total, type, groupId, userId } = parsedData.data;
+    const { name, description, date, total, color, userId } = parsedData.data;
 
     const newGroup = {
         name,
         description,
         date,
         total,
-        type,
-        groupId,
+        color,
         userId,
     };
 
     try {
-        await Cashflows.create(newGroup);
+        await Groups.create(newGroup);
         return { success: true as const, message: "User created successfully" };
     } catch (error: any) {
         if (error.code === 11000) {

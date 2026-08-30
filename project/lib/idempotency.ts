@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedisClient } from "@/lib/redis";
-import { STATUS_CODES } from "@/lib/statusCode";
+import { STATUS_CODES } from "@/lib/utils/statusCode";
 
 type ErrorCode = Exclude<keyof typeof STATUS_CODES, "SUCCESS">;
 

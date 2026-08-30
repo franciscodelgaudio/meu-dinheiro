@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Cashflows } from "@/lib/models/cashflow";
-import { CreateCashflow } from "@/lib/actions/cashflow";
+import { CreateCashflow } from "@/lib/actions/cashflow.actions";
 import { withIdempotency } from "@/lib/idempotency";
+import { CashflowQueryParamsV1, CreateCashflowRequestV1, toCreateCashflowInput } from "@/lib/contracts/v1/cashflow";
 import mongoose from "mongoose";
 import { z } from "zod";
 
 const IDEMPOTENCY_KEY_TTL_SECONDS = 60; // 1 minute in seconds
-
-const paramsSchema = z.object({
-    status: z.enum(["income", "expense"]).optional(),
-    search: z.string().optional(),
-    sort: z.enum(["asc", "desc"]).optional(),
-    sortBy: z.enum(["id", "name", "groupId"]).optional(),
-});
 
 function escapeRegex(value: string) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -59,8 +53,14 @@ export async function POST(
         ttlSeconds: IDEMPOTENCY_KEY_TTL_SECONDS,
         handler: async () => {
             const { userId } = await params;
-            const data = await request.json();
-            return CreateCashflow({ ...data, userId });
+            const body = await request.json();
+            const parsedBody = CreateCashflowRequestV1.safeParse(body);
+
+            if (!parsedBody.success) {
+                return { success: false as const, message: "Invalid cashflow data", code: "VALIDATION_ERROR" as const };
+            }
+
+            return CreateCashflow(toCreateCashflowInput(userId, parsedBody.data));
         },
     });
 }
@@ -69,23 +69,25 @@ export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ userId: string }> }) {
 
-    const limitAux = request.nextUrl.searchParams.get("limit");
-    const limit = limitAux ? parseInt(limitAux) : 10;
     const cursor = request.nextUrl.searchParams.get("cursor");
 
-    const statusAux = request.nextUrl.searchParams.get("type");
+    const limitAux = request.nextUrl.searchParams.get("limit");
+    const typeAux = request.nextUrl.searchParams.get("type");
     const searchAux = request.nextUrl.searchParams.get("search");
     const sortAux = request.nextUrl.searchParams.get("sort");
     const sortByAux = request.nextUrl.searchParams.get("sortBy");
 
     // searchParams.get() devolve null quando ausente; z.optional() só aceita
     // undefined, então precisa normalizar antes do parse.
-    const { data: parsedParams } = paramsSchema.safeParse({
-        status: statusAux ?? undefined,
+    const { data: parsedParams } = CashflowQueryParamsV1.safeParse({
+        limit: limitAux ?? undefined,
+        type: typeAux ?? undefined,
         search: searchAux ?? undefined,
         sort: sortAux ?? undefined,
         sortBy: sortByAux ?? undefined,
     });
+
+    const limit = parsedParams?.limit ?? 10;
 
     // Direção do sort também define o operador do cursor: em ordem crescente
     // a próxima página tem valor maior, em decrescente tem valor menor.
@@ -98,8 +100,8 @@ export async function GET(
         { userId: new mongoose.Types.ObjectId((await params).userId) },
     ];
 
-    if (parsedParams?.status) {
-        filters.push({ status: parsedParams.status });
+    if (parsedParams?.type) {
+        filters.push({ type: parsedParams.type });
     }
 
     if (parsedParams?.search) {

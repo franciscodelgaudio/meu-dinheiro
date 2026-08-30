@@ -1,18 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { CreateUser } from "@/lib/actions/user";
-import { CreateUserRequestV1, toCreateUserInput } from "@/lib/contracts/v1/user";
+import { CreateUser } from "@/lib/actions/user.actions";
+import { CreateUserRequestV1, toCreateUserInput, UserQueryParamsV1 } from "@/lib/contracts/v1/user";
 import { Users } from "@/lib/models/user";
 import { getRateLimiter, getClientIp } from "@/lib/rateLimit";
-import { STATUS_CODES } from "@/lib/statusCode";
+import { STATUS_CODES } from "@/lib/utils/statusCode";
 import mongoose from "mongoose";
-import { z } from "zod";
-
-const paramsSchema = z.object({
-    page: z.coerce.number().int().min(1).optional(),
-    limit: z.coerce.number().int().min(1).max(100).optional(),
-    search: z.string().optional(),
-    userId: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
-});
 
 function escapeRegex(value: string) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -75,7 +67,7 @@ export async function GET(request: NextRequest) {
 
     // searchParams.get() devolve null quando ausente; z.optional() só aceita
     // undefined, então precisa normalizar antes do parse.
-    const { data: parsedParams } = paramsSchema.safeParse({
+    const { data: parsedParams } = UserQueryParamsV1.safeParse({
         page: pageAux ?? undefined,
         limit: limitAux ?? undefined,
         search: searchAux ?? undefined,
