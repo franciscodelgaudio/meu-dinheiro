@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyCashflowToTotal } from "@/lib/utils/cashflow";
+import { applyCashflowToTotal } from "@/lib/services/cashflow";
 import type { ICashflow } from "@/lib/models/cashflow";
 
 type CashflowInput = Pick<ICashflow, "type" | "total">;
