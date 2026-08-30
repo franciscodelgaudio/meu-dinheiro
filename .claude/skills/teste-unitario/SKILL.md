@@ -7,6 +7,23 @@ description: Fluxo TDD de duas etapas para criar testes unitários de uma funç�
 
 Fluxo obrigatório ao criar teste para uma função ainda não implementada (ou só parcialmente implementada) neste projeto. A skill tem exatamente duas etapas, nesta ordem, e para em cada uma delas antes de seguir.
 
+## O que torna um teste unitário legítimo
+
+Todo teste criado por esta skill precisa ser um teste de unidade de verdade, seguindo a definição de Michael Feathers. Um teste **não** é um teste unitário — e portanto não pode ser escrito assim nesta skill — se ele:
+
+1. Interage com um banco de dados (real ou de teste/local).
+2. Se comunica através da rede.
+3. Interage com o sistema de arquivos.
+4. Não pode ser executado em paralelo com os outros testes unitários (estado global compartilhado, ordem de execução importa, etc.).
+5. Exige etapas especiais ou modificações no ambiente para rodar (editar arquivos de configuração, variáveis de ambiente específicas, serviços externos de pé, etc.).
+
+Na prática, neste projeto isso significa:
+
+- **Sempre** mockar `lib/models/*.ts` (e qualquer outro módulo que fale com o Mongo, com uma API externa ou com o sistema de arquivos) via `vi.mock`. Nunca deixar um teste chamar `dbConnect()` de verdade, nem que seja "só para ler".
+- O teste tem que rodar isoladamente e em qualquer ordem: sem depender de estado deixado por outro teste, sem depender de dados pré-existentes em um banco, sem depender da ordem em que os `it` aparecem no arquivo. Use `beforeEach` para resetar mocks (`mockReset`/`mockClear`), nunca dados que persistem entre testes.
+- O teste não pode exigir nenhum setup manual (subir um container, criar um `.env`, rodar uma migration) para passar — se rodar `npx vitest run <arquivo>` do zero, sem nenhum passo a mais, tem que funcionar.
+- Se a função sendo testada depende de algo que só pode ser exercitado via banco/rede/filesystem (ex. uma query real), isso é sinal de que o teste correto aqui é testar a lógica isolável (validação, transformação, decisão de qual código de erro retornar) mockando a dependência externa — não abrir uma exceção e "testar de verdade" contra um banco.
+
 ## Etapa 1 — Escrever o teste
 
 1. Descubra (pelo pedido do usuário, pelo código vizinho, ou perguntando se for ambíguo) a assinatura esperada da função: nome, parâmetros, formato de retorno.
