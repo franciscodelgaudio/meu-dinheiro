@@ -48,6 +48,14 @@ Só depois de sinalizar a etapa 1:
 3. Rode o teste você mesmo só para confirmar que ele agora executa (ainda pode falhar nas asserções — isso é esperado, um stub não faz o teste passar).
 4. Avise o usuário: o stub foi criado, ele deve rodar o teste de novo. Deixe explícito que o stub não implementa a lógica real — isso fica para uma etapa seguinte, só se o usuário pedir.
 
+## Type-check (a Vercel roda `tsc` no build)
+
+O build da Vercel roda o type-check do TypeScript sobre o repositório inteiro, incluindo os arquivos de teste — não só o `vitest run`. Um teste pode passar localmente e ainda assim quebrar o deploy se o arquivo de teste não compilar. Por isso, ao terminar de escrever (ou alterar) um teste:
+
+1. Rode `npx tsc --noEmit` (além do `vitest run`) antes de considerar a etapa concluída.
+2. Cuidado especial ao acessar `mock.calls[n]` de um método mockado com `vi.mocked(...)`: o tipo inferido continua sendo o da assinatura **real** do método (ex. `findOneAndUpdate` do Mongoose, com parâmetros opcionais), mesmo que o mock em runtime seja um objeto plano. Um cast direto tipo `mock.calls[0] as [Record<string, unknown>, Record<string, unknown>]` pode falhar com erro `TS2352` ("Conversion... may be a mistake") porque os tipos não se sobrepõem o suficiente.
+3. Nesse caso, passe por `unknown` primeiro: `mock.calls[0] as unknown as [Record<string, unknown>, Record<string, unknown>]`. Isso é seguro aqui porque o teste sabe, pelo próprio mock que ele configurou, qual é o formato real dos argumentos — só o TypeScript não consegue provar isso a partir do tipo da assinatura original.
+
 ## Regras críticas
 
 - **Nunca pule direto para a implementação completa** "para o teste passar". Se o usuário pedir só o teste, pare na etapa 1. Se pedir um stub, pare na etapa 2. Só implemente a lógica real se isso for pedido explicitamente, fora desta skill.
