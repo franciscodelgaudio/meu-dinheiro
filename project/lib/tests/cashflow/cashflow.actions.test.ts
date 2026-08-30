@@ -66,7 +66,7 @@ describe("UpdateCashflow", () => {
         expect(result).toEqual({ success: true, message: "Cashflow updated successfully" });
         expect(mockFindOneAndUpdate).toHaveBeenCalledTimes(1);
 
-        const [filter, updateFields] = mockFindOneAndUpdate.mock.calls[0] as [Record<string, unknown>, Record<string, unknown>];
+        const [filter, updateFields] = mockFindOneAndUpdate.mock.calls[0] as unknown as [Record<string, unknown>, Record<string, unknown>];
         expect(filter).toEqual({ _id: VALID_ID, userId: VALID_USER_ID });
         expect(updateFields).toEqual({ name: "Salário revisado", total: 750 });
         expect(updateFields).not.toHaveProperty("userId");
@@ -78,7 +78,7 @@ describe("UpdateCashflow", () => {
 
         await UpdateCashflow({ id: VALID_ID, userId: VALID_USER_ID, groupId: VALID_GROUP_ID });
 
-        const [, updateFields] = mockFindOneAndUpdate.mock.calls[0] as [Record<string, unknown>, Record<string, unknown>];
+        const [, updateFields] = mockFindOneAndUpdate.mock.calls[0] as unknown as [Record<string, unknown>, Record<string, unknown>];
         expect(updateFields).toEqual({ groupId: VALID_GROUP_ID });
     });
 
