@@ -1,13 +1,8 @@
 import { Users } from "@/lib/models/user";
 
-// Forma estável esperada pelo domínio, independente da versão da API que
-// originou a chamada. Já reflete o banco (firstName/lastName); é cada
-// contrato de versão que mapeia pra isso antes de chamar CreateUser — o
-// split de "name" pra quem ainda fala v1 fica no mapper da v1, não aqui.
 export interface CreateUserInput {
     id: string;
-    firstName: string;
-    lastName: string;
+    name: string;
     email?: string;
     avatarUrl?: string;
 }
