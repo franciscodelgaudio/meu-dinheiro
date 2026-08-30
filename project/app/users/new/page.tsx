@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { useSubmitState } from "@/lib/hooks/use-submit-state";
 
 export default function CreateUserPage() {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const { state, run } = useSubmitState();
@@ -42,8 +44,19 @@ export default function CreateUserPage() {
     });
 
     if (result.success) {
+      // A action de criação não devolve o _id do documento; busca pelo nome
+      // (ordenado por _id desc) para localizar o usuário recém-criado e já
+      // levar para a rota dinâmica dele.
+      const search = await fetch(`/api/v1/user?search=${encodeURIComponent(name)}&limit=1`);
+      const searchData = await search.json();
+      const createdUserId = searchData?.data?.[0]?._id;
+
       setName("");
       setEmail("");
+
+      if (createdUserId) {
+        router.push(`/users/${createdUserId}`);
+      }
     }
   }
 
