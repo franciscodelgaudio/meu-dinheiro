@@ -6,14 +6,14 @@ const IDEMPOTENCY_KEY_TTL_SECONDS = 60; // 1 minute in seconds
 
 export async function POST(
     request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }) {
+    { params }: { params: Promise<{ userId: string }> }) {
 
     return withIdempotency({
         request,
         resource: "group",
         ttlSeconds: IDEMPOTENCY_KEY_TTL_SECONDS,
         handler: async () => {
-            const { id: userId } = await params;
+            const { userId } = await params;
             const data = await request.json();
             return CreateGroup({ ...data, userId });
         },
