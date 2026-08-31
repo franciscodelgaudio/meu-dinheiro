@@ -179,7 +179,20 @@ export async function GET(
     const cashflows = await Cashflows.aggregate([
         { $match: { $and: filters } },
         { $sort: sortStage },
-        { $limit: limit + 1 }
+        { $limit: limit + 1 },
+        {
+            $lookup: {
+                from: "groups",
+                localField: "groupId",
+                foreignField: "_id",
+                as: "group",
+            },
+        },
+        {
+            $set: {
+                group: { $arrayElemAt: ["$group", 0] },
+            },
+        },
     ])
 
     const hasNextPage = cashflows.length > limit;

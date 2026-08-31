@@ -7,6 +7,7 @@ import {
   ArrowUp,
   ArrowUpDown,
   CalendarDays,
+  Layers,
   MoreHorizontal,
   Pencil,
   Receipt,
@@ -46,6 +47,7 @@ type Cashflow = {
   total: number;
   type: "income" | "expense";
   groupId: string | null;
+  group?: { _id: string; name: string; color: string | null } | null;
 };
 
 type CashflowListResponse = {
@@ -54,7 +56,7 @@ type CashflowListResponse = {
   nextCursor: string | null;
 };
 
-const GRID_COLUMNS = "2fr 1fr 1fr 1fr 3rem";
+const GRID_COLUMNS = "2fr 1fr 1fr 1fr 1fr 3rem";
 const ROW_HEIGHT = 44;
 
 type SortField = "name" | "date";
@@ -236,6 +238,10 @@ export default function CashflowsPage() {
                     <Tag className="size-4" />
                     Tipo
                   </TableHead>
+                  <TableHead className="flex items-center gap-2">
+                    <Layers className="size-4" />
+                    Grupo
+                  </TableHead>
                   <TableHead className="flex items-center justify-end gap-2 text-right">
                     <Wallet className="size-4" />
                     Valor
@@ -268,6 +274,23 @@ export default function CashflowsPage() {
                         <Badge variant={cashflow.type === "income" ? "default" : "destructive"}>
                           {cashflow.type === "income" ? "Entrada" : "Saída"}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="flex items-center truncate">
+                        {cashflow.group ? (
+                          <Badge
+                            variant="outline"
+                            className="gap-1.5 truncate"
+                            style={{ borderColor: cashflow.group.color ?? undefined }}
+                          >
+                            <span
+                              className="size-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: cashflow.group.color ?? "#71717a" }}
+                            />
+                            <span className="truncate">{cashflow.group.name}</span>
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="flex items-center justify-end text-right">
                         {formatCurrency(cashflow.total)}

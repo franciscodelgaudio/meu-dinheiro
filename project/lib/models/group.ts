@@ -4,10 +4,6 @@ import mongoose from "mongoose";
 export interface IGroup {
   name: string;
   description: string | null;
-  date: {
-    month: string;
-    year: number;
-  }[];
   total: number;
   color: string | null;
   userId: mongoose.Types.ObjectId;

@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { XIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -17,14 +15,12 @@ import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { MonthPicker, formatMonthYear, type MonthYear } from "@/components/month-picker";
 import { useSubmitState } from "@/lib/hooks/use-submit-state";
 
 export type EditableGroup = {
   _id: string;
   name: string;
   description: string | null;
-  date: { month: string; year: number }[];
   total: number;
   color: string | null;
 };
@@ -41,7 +37,6 @@ export function EditGroupSheet({ userId, group, onOpenChange, onUpdated }: EditG
   const [description, setDescription] = useState("");
   const [total, setTotal] = useState(0);
   const [color, setColor] = useState("#18181b");
-  const [months, setMonths] = useState<MonthYear[]>([]);
   const { state, run, reset } = useSubmitState();
 
   useEffect(() => {
@@ -51,23 +46,8 @@ export function EditGroupSheet({ userId, group, onOpenChange, onUpdated }: EditG
     setDescription(group.description ?? "");
     setTotal(group.total);
     setColor(group.color ?? "#18181b");
-    setMonths(group.date.map((item) => ({ month: item.month, year: String(item.year) })));
     reset();
   }, [group, reset]);
-
-  function addMonth(value: MonthYear) {
-    setMonths((current) =>
-      current.some((item) => item.month === value.month && item.year === value.year)
-        ? current
-        : [...current, value],
-    );
-  }
-
-  function removeMonth(value: MonthYear) {
-    setMonths((current) =>
-      current.filter((item) => !(item.month === value.month && item.year === value.year)),
-    );
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -86,7 +66,6 @@ export function EditGroupSheet({ userId, group, onOpenChange, onUpdated }: EditG
         body: JSON.stringify({
           name,
           description: description || undefined,
-          date: months,
           total,
           color,
         }),
@@ -163,24 +142,6 @@ export function EditGroupSheet({ userId, group, onOpenChange, onUpdated }: EditG
                 <span className="text-sm text-muted-foreground">{color}</span>
               </div>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Meses cobertos</Label>
-              <div className="flex flex-wrap items-center gap-2">
-                {months.map((item) => (
-                  <Badge key={`${item.month}-${item.year}`} variant="secondary" className="gap-1">
-                    {formatMonthYear(item)}
-                    <button
-                      type="button"
-                      onClick={() => removeMonth(item)}
-                      aria-label="Remover mês"
-                    >
-                      <XIcon className="size-3" />
-                    </button>
-                  </Badge>
-                ))}
-                <MonthPicker onSelect={addMonth} />
-              </div>
-            </div>
             {state.status === "error" && (
               <p className="text-sm text-destructive">{state.message}</p>
             )}
@@ -192,7 +153,7 @@ export function EditGroupSheet({ userId, group, onOpenChange, onUpdated }: EditG
             <SheetClose render={<Button type="button" variant="outline" />}>
               Cancelar
             </SheetClose>
-            <Button type="submit" disabled={state.status === "loading" || months.length === 0}>
+            <Button type="submit" disabled={state.status === "loading"}>
               {state.status === "loading" ? "Salvando..." : "Salvar alterações"}
             </Button>
           </SheetFooter>

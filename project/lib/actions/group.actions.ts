@@ -13,12 +13,11 @@ export async function CreateGroup(data: z.infer<typeof GroupSchema>) {
         return { success: false as const, message: "Invalid user data", code: "VALIDATION_ERROR" as const };
     }
 
-    const { name, description, date, total, color, userId } = parsedData.data;
+    const { name, description, total, color, userId } = parsedData.data;
 
     const newGroup = {
         name,
         description,
-        date,
         total,
         color,
         userId,

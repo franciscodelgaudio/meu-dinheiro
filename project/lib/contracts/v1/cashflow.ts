@@ -52,6 +52,11 @@ export const CashflowEntityV1 = z.object({
     total: z.number().meta({ example: 5000 }),
     type: z.enum(["income", "expense"]),
     groupId: z.string().nullable().meta({ example: "665f1c2e2f8b9a0012345678" }),
+    group: z.object({
+        _id: z.string().meta({ example: "665f1c2e2f8b9a0012345678" }),
+        name: z.string().meta({ example: "Moradia" }),
+        color: z.string().nullable().meta({ example: "#18181b" }),
+    }).nullable().optional().meta({ description: "Grupo do lançamento, se houver." }),
     userId: z.string().meta({ example: "665f1c2e2f8b9a0012345677" }),
     createdAt: z.string().meta({ example: "2026-01-15T12:00:00.000Z" }),
     updatedAt: z.string().meta({ example: "2026-01-15T12:00:00.000Z" }),

@@ -6,7 +6,6 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  CalendarDays,
   MoreHorizontal,
   Pencil,
   Search,
@@ -14,7 +13,6 @@ import {
   Trash2,
   Wallet,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,7 +32,6 @@ import {
 import { CreateGroupSheet } from "@/components/groups/create-group-sheet";
 import { EditGroupSheet } from "@/components/groups/edit-group-sheet";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { formatMonthYear } from "@/components/month-picker";
 import { formatCurrency } from "@/lib/utils/currency";
 import { useCursorPaginationVirtualizer } from "@/lib/hooks/use-cursor-pagination-virtualizer";
 
@@ -42,7 +39,6 @@ type Group = {
   _id: string;
   name: string;
   description: string | null;
-  date: { month: string; year: number }[];
   total: number;
   color: string | null;
 };
@@ -53,7 +49,7 @@ type GroupListResponse = {
   totalPages: number;
 };
 
-const GRID_COLUMNS = "2fr 2fr 1.5fr 1fr";
+const GRID_COLUMNS = "2fr 1.5fr 1fr";
 const ROW_HEIGHT = 44;
 
 type SortField = "name" | "total" | "createdAt";
@@ -223,10 +219,6 @@ export default function GroupsPage() {
                       Nome
                     </SortableHeader>
                   </TableHead>
-                  <TableHead className="flex items-center gap-2">
-                    <CalendarDays className="size-4" />
-                    Meses
-                  </TableHead>
                   <TableHead className="flex items-center justify-end gap-2 text-right">
                     <Wallet className="size-4" />
                     <SortableHeader
@@ -263,13 +255,6 @@ export default function GroupsPage() {
                           style={{ backgroundColor: group.color ?? undefined }}
                         />
                         <span className="truncate">{group.name}</span>
-                      </TableCell>
-                      <TableCell className="flex items-center gap-1 overflow-hidden">
-                        {group.date.map((item) => (
-                          <Badge key={`${item.month}-${item.year}`} variant="secondary">
-                            {formatMonthYear({ month: item.month, year: String(item.year) })}
-                          </Badge>
-                        ))}
                       </TableCell>
                       <TableCell className="flex items-center justify-end text-right">
                         {formatCurrency(group.total)}
