@@ -1,16 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { CalendarDays, MoreHorizontal, Pencil, Receipt, Tag, Trash2, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -19,7 +12,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CreateCashflowSheet } from "@/components/cashflows/create-cashflow-sheet";
+import { formatCurrency } from "@/lib/utils/currency";
+import { useCursorPaginationVirtualizer } from "@/lib/hooks/use-cursor-pagination-virtualizer";
 
 type Cashflow = {
   _id: string;
@@ -36,38 +37,27 @@ type CashflowListResponse = {
   nextCursor: string | null;
 };
 
-const currencyFormatter = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-});
-
-const GRID_COLUMNS = "2fr 1fr 1fr 1fr";
+const GRID_COLUMNS = "2fr 1fr 1fr 1fr 3rem";
 const ROW_HEIGHT = 44;
-const PAGE_SIZE = 10;
 
 export default function CashflowsPage() {
   const { id: userId } = useParams<{ id: string }>();
-  const [cashflows, setCashflows] = useState<Cashflow[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // Estado só é atualizado de forma assíncrona, então dois disparos do efeito
-  // de scroll no mesmo tick (ex.: StrictMode) ainda veriam status "idle" e
-  // duplicariam o fetch; a ref é atualizada na hora e evita a corrida.
-  const isFetchingRef = useRef(false);
 
-  async function loadPage(nextCursor?: string) {
-    if (isFetchingRef.current) {
-      return;
-    }
-    isFetchingRef.current = true;
-    setStatus("loading");
-    try {
+  const {
+    items: cashflows,
+    status,
+    scrollRef,
+    headerRef,
+    rowVirtualizer,
+    virtualItems,
+    reload,
+  } = useCursorPaginationVirtualizer<Cashflow>({
+    estimateSize: ROW_HEIGHT,
+    deps: [userId],
+    fetchPage: async (cursor) => {
       const url = new URL(`/api/v1/user/${userId}/cashflow`, window.location.origin);
-      url.searchParams.set("limit", String(PAGE_SIZE));
-      if (nextCursor) {
-        url.searchParams.set("cursor", nextCursor);
+      if (cursor) {
+        url.searchParams.set("cursor", cursor);
       }
 
       const response = await fetch(url);
@@ -77,115 +67,115 @@ export default function CashflowsPage() {
         throw new Error("Failed to load cashflows");
       }
 
-      setCashflows((prev) => (nextCursor ? [...prev, ...data.data] : data.data));
-      setCursor(data.nextCursor);
-      setHasNextPage(data.hasNextPage);
-      setStatus("idle");
-    } catch {
-      setStatus("error");
-    } finally {
-      isFetchingRef.current = false;
-    }
-  }
-
-  useEffect(() => {
-    loadPage();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
-
-  const rowVirtualizer = useVirtualizer({
-    count: cashflows.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 10,
+      return data;
+    },
   });
 
-  const virtualItems = rowVirtualizer.getVirtualItems();
-
-  // Dispara o carregamento da próxima página assim que a última linha
-  // renderizada (dentro do overscan) alcança o fim dos dados já buscados.
-  useEffect(() => {
-    const lastItem = virtualItems[virtualItems.length - 1];
-    if (!lastItem || isFetchingRef.current || !hasNextPage || !cursor) {
-      return;
-    }
-    if (lastItem.index >= cashflows.length - 1) {
-      loadPage(cursor);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [virtualItems, cashflows.length, hasNextPage, status, cursor]);
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
-      <Card className="flex min-h-0 flex-1 flex-col">
-        <CardHeader className="flex flex-row items-center justify-between">
+    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div className="flex flex-col gap-4 p-4">
+        <div ref={headerRef} className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Lançamentos</CardTitle>
-            <CardDescription className="break-all">
+            <h1 className="text-lg font-semibold tracking-tight">Lançamentos</h1>
+            <p className="text-sm text-muted-foreground break-all">
               Entradas e saídas do usuário {userId}.
-            </CardDescription>
+            </p>
           </div>
-          <CreateCashflowSheet userId={userId} onCreated={() => loadPage()} />
-        </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col">
-          {status === "error" && (
-            <p className="text-sm text-destructive">Erro ao carregar lançamentos.</p>
-          )}
-          {status !== "error" && cashflows.length === 0 && status === "idle" && (
-            <p className="text-sm text-muted-foreground">Nenhum lançamento encontrado.</p>
-          )}
-          {cashflows.length > 0 && (
-            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto rounded-md border">
-              <Table style={{ display: "grid" }}>
-                <TableHeader
-                  className="sticky top-0 z-10 bg-muted/95"
-                  style={{ display: "grid" }}
-                >
-                  <TableRow className="hover:bg-transparent" style={{ display: "grid", gridTemplateColumns: GRID_COLUMNS }}>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead className="text-right">Valor</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody
-                  style={{ display: "grid", height: rowVirtualizer.getTotalSize(), position: "relative" }}
-                >
-                  {virtualItems.map((virtualRow) => {
-                    const cashflow = cashflows[virtualRow.index];
-                    return (
-                      <TableRow
-                        key={cashflow._id}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: GRID_COLUMNS,
-                          position: "absolute",
-                          width: "100%",
-                          height: virtualRow.size,
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        <TableCell className="truncate">{cashflow.name}</TableCell>
-                        <TableCell>
-                          {new Date(cashflow.date).toLocaleDateString("pt-BR")}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={cashflow.type === "income" ? "default" : "destructive"}>
-                            {cashflow.type === "income" ? "Entrada" : "Saída"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {currencyFormatter.format(cashflow.total)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          <CreateCashflowSheet userId={userId} onCreated={reload} />
+        </div>
+
+        {status === "error" && (
+          <p className="text-sm text-destructive">Erro ao carregar lançamentos.</p>
+        )}
+        {status !== "error" && cashflows.length === 0 && status === "idle" && (
+          <p className="text-sm text-muted-foreground">Nenhum lançamento encontrado.</p>
+        )}
+        {cashflows.length > 0 && (
+          <div className="overflow-hidden rounded-md border">
+            <Table style={{ display: "grid" }}>
+              <TableHeader
+                className="sticky top-0 z-10 bg-muted/95"
+                style={{ display: "grid" }}
+              >
+                <TableRow className="hover:bg-transparent" style={{ display: "grid", gridTemplateColumns: GRID_COLUMNS }}>
+                  <TableHead className="flex items-center gap-2">
+                    <Receipt className="size-4" />
+                    Nome
+                  </TableHead>
+                  <TableHead className="flex items-center gap-2">
+                    <CalendarDays className="size-4" />
+                    Data
+                  </TableHead>
+                  <TableHead className="flex items-center gap-2">
+                    <Tag className="size-4" />
+                    Tipo
+                  </TableHead>
+                  <TableHead className="flex items-center justify-end gap-2 text-right">
+                    <Wallet className="size-4" />
+                    Valor
+                  </TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody
+                style={{ display: "grid", height: rowVirtualizer.getTotalSize(), position: "relative" }}
+              >
+                {virtualItems.map((virtualRow) => {
+                  const cashflow = cashflows[virtualRow.index];
+                  return (
+                    <TableRow
+                      key={cashflow._id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: GRID_COLUMNS,
+                        position: "absolute",
+                        width: "100%",
+                        height: virtualRow.size,
+                        transform: `translateY(${virtualRow.start - rowVirtualizer.options.scrollMargin}px)`,
+                      }}
+                    >
+                      <TableCell className="flex items-center truncate">{cashflow.name}</TableCell>
+                      <TableCell className="flex items-center">
+                        {new Date(cashflow.date).toLocaleDateString("pt-BR")}
+                      </TableCell>
+                      <TableCell className="flex items-center">
+                        <Badge variant={cashflow.type === "income" ? "default" : "destructive"}>
+                          {cashflow.type === "income" ? "Entrada" : "Saída"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="flex items-center justify-end text-right">
+                        {formatCurrency(cashflow.total)}
+                      </TableCell>
+                      <TableCell className="flex items-center justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button variant="ghost" size="icon-sm">
+                                <MoreHorizontal />
+                                <span className="sr-only">Ações</span>
+                              </Button>
+                            }
+                          />
+                          <DropdownMenuContent>
+                            <DropdownMenuItem>
+                              <Pencil />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem variant="destructive">
+                              <Trash2 />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
