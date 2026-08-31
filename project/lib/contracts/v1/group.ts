@@ -23,6 +23,18 @@ export function toCreateGroupInput(userId: string, request: CreateGroupRequestV1
     };
 }
 
+export const UpdateGroupRequestV1 = CreateGroupRequestV1.partial().meta({ id: "UpdateGroupRequest" });
+
+export type UpdateGroupRequestV1 = z.infer<typeof UpdateGroupRequestV1>;
+
+export function toUpdateGroupInput(userId: string, groupId: string, request: UpdateGroupRequestV1) {
+    return {
+        ...request,
+        id: groupId,
+        userId,
+    };
+}
+
 export const GroupQueryParamsV1 = z.object({
     page: z.coerce.number().int().min(1).optional().meta({ description: "Página retornada (1-indexada).", example: 1 }),
     limit: z.coerce.number().int().min(1).max(100).optional().meta({ description: "Quantidade de itens por página (máx. 100).", example: 10 }),

@@ -7,11 +7,15 @@ import {
   ArrowUp,
   ArrowUpDown,
   CalendarDays,
+  MoreHorizontal,
+  Pencil,
   Search,
   Tag,
+  Trash2,
   Wallet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -21,7 +25,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CreateGroupSheet } from "@/components/groups/create-group-sheet";
+import { EditGroupSheet } from "@/components/groups/edit-group-sheet";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { formatMonthYear } from "@/components/month-picker";
 import { formatCurrency } from "@/lib/utils/currency";
 import { useCursorPaginationVirtualizer } from "@/lib/hooks/use-cursor-pagination-virtualizer";
@@ -70,6 +82,8 @@ function SortableHeader({ active, order, onClick, children }: SortableHeaderProp
 
 export default function GroupsPage() {
   const { id: userId } = useParams<{ id: string }>();
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState<Group | null>(null);
   const [sortBy, setSortBy] = useState<SortField>("createdAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [searchInput, setSearchInput] = useState("");
@@ -124,6 +138,19 @@ export default function GroupsPage() {
     },
   });
 
+  async function handleDelete(group: Group) {
+    const response = await fetch(`/api/v1/user/${userId}/group/${group._id}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      window.alert("Erro ao excluir grupo.");
+      return;
+    }
+
+    reload();
+  }
+
   return (
     <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
       <div className="flex flex-col gap-4 p-4">
@@ -148,6 +175,29 @@ export default function GroupsPage() {
             />
           </div>
         </div>
+
+        <EditGroupSheet
+          userId={userId}
+          group={editingGroup}
+          onOpenChange={(open) => {
+            if (!open) setEditingGroup(null);
+          }}
+          onUpdated={reload}
+        />
+
+        <ConfirmDialog
+          open={deletingGroup !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeletingGroup(null);
+          }}
+          title="Excluir grupo"
+          description={`Tem certeza que deseja excluir "${deletingGroup?.name}"? Essa ação não pode ser desfeita.`}
+          confirmLabel="Excluir"
+          variant="destructive"
+          onConfirm={() => {
+            if (deletingGroup) return handleDelete(deletingGroup);
+          }}
+        />
 
         {status === "error" && (
           <p className="text-sm text-destructive">Erro ao carregar grupos.</p>
@@ -224,7 +274,31 @@ export default function GroupsPage() {
                       <TableCell className="flex items-center justify-end text-right">
                         {formatCurrency(group.total)}
                       </TableCell>
-                      <TableCell />
+                      <TableCell className="flex items-center justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button variant="ghost" size="icon-sm">
+                                <MoreHorizontal />
+                                <span className="sr-only">Ações</span>
+                              </Button>
+                            }
+                          />
+                          <DropdownMenuContent>
+                            <DropdownMenuItem onClick={() => setEditingGroup(group)}>
+                              <Pencil />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setDeletingGroup(group)}
+                            >
+                              <Trash2 />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
