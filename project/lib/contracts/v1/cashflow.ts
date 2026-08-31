@@ -19,6 +19,18 @@ export function toCreateCashflowInput(userId: string, request: CreateCashflowReq
     };
 }
 
+export const UpdateCashflowRequestV1 = CreateCashflowRequestV1.partial().meta({ id: "UpdateCashflowRequest" });
+
+export type UpdateCashflowRequestV1 = z.infer<typeof UpdateCashflowRequestV1>;
+
+export function toUpdateCashflowInput(userId: string, cashflowId: string, request: UpdateCashflowRequestV1) {
+    return {
+        ...request,
+        id: cashflowId,
+        userId,
+    };
+}
+
 export const CashflowQueryParamsV1 = z.object({
     limit: z.coerce.number().int().min(1).max(100).optional().meta({ description: "Quantidade de itens por página (máx. 100).", example: 10 }),
     cursor: z.string().optional().meta({

@@ -4,12 +4,19 @@ import { z } from "zod";
 import { ActionErrorResponseV1, ActionSuccessResponseV1, IdempotencyKeyHeaderV1 } from "@/lib/contracts/v1/common";
 import { CreateUserRequestV1, UserListResponseV1, UserQueryParamsV1 } from "@/lib/contracts/v1/user";
 import { CreateGroupRequestV1 } from "@/lib/contracts/v1/group";
-import { CashflowListResponseV1, CashflowQueryParamsV1, CreateCashflowRequestV1 } from "@/lib/contracts/v1/cashflow";
+import { CashflowListResponseV1, CashflowQueryParamsV1, CreateCashflowRequestV1, UpdateCashflowRequestV1 } from "@/lib/contracts/v1/cashflow";
 
 const userIdPathParam = z.object({
     userId: z.string().regex(/^[0-9a-fA-F]{24}$/).meta({
         description: "_id (ObjectId do Mongo) do usuário dono do recurso.",
         example: "665f1c2e2f8b9a0012345677",
+    }),
+});
+
+const cashflowIdPathParam = userIdPathParam.extend({
+    cashflowId: z.string().regex(/^[0-9a-fA-F]{24}$/).meta({
+        description: "_id (ObjectId do Mongo) do lançamento.",
+        example: "665f1c2e2f8b9a0012345679",
     }),
 });
 
@@ -132,6 +139,38 @@ export const openApiDocumentV1 = createDocument({
                     "200": {
                         description: "Página de lançamentos.",
                         content: { "application/json": { schema: CashflowListResponseV1 } },
+                    },
+                },
+            },
+        },
+        "/user/{userId}/cashflow/{cashflowId}": {
+            put: {
+                tags: ["Cashflow"],
+                summary: "Atualiza um lançamento do usuário",
+                requestParams: { path: cashflowIdPathParam },
+                requestBody: {
+                    content: { "application/json": { schema: UpdateCashflowRequestV1 } },
+                },
+                responses: {
+                    "200": {
+                        description: "Lançamento atualizado com sucesso.",
+                        content: { "application/json": { schema: ActionSuccessResponseV1 } },
+                    },
+                    "404": {
+                        description: "Nenhum lançamento encontrado para o id/userId informados.",
+                        content: { "application/json": { schema: ActionErrorResponseV1 } },
+                    },
+                    "409": {
+                        description: "Conflito ao atualizar o lançamento.",
+                        content: { "application/json": { schema: ActionErrorResponseV1 } },
+                    },
+                    "422": {
+                        description: "Corpo da requisição inválido.",
+                        content: { "application/json": { schema: ActionErrorResponseV1 } },
+                    },
+                    "500": {
+                        description: "Erro interno ao atualizar o lançamento.",
+                        content: { "application/json": { schema: ActionErrorResponseV1 } },
                     },
                 },
             },

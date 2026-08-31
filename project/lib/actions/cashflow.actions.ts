@@ -65,3 +65,7 @@ export async function UpdateCashflow(data: z.infer<typeof UpdateCashflowSchema>)
         return { success: false as const, message: "Error updating cashflow", code: "INTERNAL_SERVER_ERROR" as const };
     }
 }
+
+export async function DeleteCashflow(data: { id: string; userId: string }) {
+    return { success: false as const, message: "Not implemented", code: "INTERNAL_SERVER_ERROR" as const };
+}

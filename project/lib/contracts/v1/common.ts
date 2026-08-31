@@ -12,7 +12,7 @@ export const ActionSuccessResponseV1 = z.object({
 export const ActionErrorResponseV1 = z.object({
     success: z.literal(false),
     message: z.string(),
-    code: z.enum(["VALIDATION_ERROR", "CONFLICT", "TOO_MANY_REQUESTS", "INTERNAL_SERVER_ERROR"]),
+    code: z.enum(["VALIDATION_ERROR", "CONFLICT", "NOT_FOUND", "TOO_MANY_REQUESTS", "INTERNAL_SERVER_ERROR"]),
 }).meta({
     id: "ActionErrorResponse",
     description: "Erro ao processar a requisição.",

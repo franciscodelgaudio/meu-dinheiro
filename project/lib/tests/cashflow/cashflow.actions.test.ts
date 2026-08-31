@@ -5,13 +5,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/models/cashflow", () => ({
     Cashflows: {
         findOneAndUpdate: vi.fn(),
+        findOneAndDelete: vi.fn(),
     },
 }));
 
 import { Cashflows } from "@/lib/models/cashflow";
-import { UpdateCashflow } from "@/lib/actions/cashflow.actions";
+import { DeleteCashflow, UpdateCashflow } from "@/lib/actions/cashflow.actions";
 
 const mockFindOneAndUpdate = vi.mocked(Cashflows.findOneAndUpdate);
+const mockFindOneAndDelete = vi.mocked(Cashflows.findOneAndDelete);
 
 const VALID_ID = "665f1c2e2f8b9a0012345679";
 const VALID_USER_ID = "665f1c2e2f8b9a0012345677";
@@ -103,6 +105,56 @@ describe("UpdateCashflow", () => {
         mockFindOneAndUpdate.mockRejectedValue(new Error("connection lost"));
 
         const result = await UpdateCashflow({ id: VALID_ID, userId: VALID_USER_ID, total: 100 });
+
+        expect(result.success).toBe(false);
+        expect(result.code).toBe("INTERNAL_SERVER_ERROR");
+    });
+});
+
+describe("DeleteCashflow", () => {
+    beforeEach(() => {
+        mockFindOneAndDelete.mockReset();
+    });
+
+    it("retorna VALIDATION_ERROR quando o id do cashflow é inválido", async () => {
+        const result = await DeleteCashflow({ id: "id-invalido", userId: VALID_USER_ID });
+
+        expect(result).toEqual({ success: false, message: "Invalid user data", code: "VALIDATION_ERROR" });
+        expect(mockFindOneAndDelete).not.toHaveBeenCalled();
+    });
+
+    it("retorna VALIDATION_ERROR quando o userId é inválido", async () => {
+        const result = await DeleteCashflow({ id: VALID_ID, userId: "user-invalido" });
+
+        expect(result.success).toBe(false);
+        expect(result.code).toBe("VALIDATION_ERROR");
+        expect(mockFindOneAndDelete).not.toHaveBeenCalled();
+    });
+
+    it("remove o cashflow filtrando por id e userId", async () => {
+        mockFindOneAndDelete.mockResolvedValue({ _id: VALID_ID, userId: VALID_USER_ID });
+
+        const result = await DeleteCashflow({ id: VALID_ID, userId: VALID_USER_ID });
+
+        expect(result).toEqual({ success: true, message: "Cashflow deleted successfully" });
+        expect(mockFindOneAndDelete).toHaveBeenCalledTimes(1);
+
+        const [filter] = mockFindOneAndDelete.mock.calls[0] as unknown as [Record<string, unknown>];
+        expect(filter).toEqual({ _id: VALID_ID, userId: VALID_USER_ID });
+    });
+
+    it("retorna NOT_FOUND quando nenhum cashflow é encontrado para o id/userId informados", async () => {
+        mockFindOneAndDelete.mockResolvedValue(null);
+
+        const result = await DeleteCashflow({ id: VALID_ID, userId: VALID_USER_ID });
+
+        expect(result).toEqual({ success: false, message: "Cashflow not found", code: "NOT_FOUND" });
+    });
+
+    it("retorna INTERNAL_SERVER_ERROR quando o banco lança um erro inesperado", async () => {
+        mockFindOneAndDelete.mockRejectedValue(new Error("connection lost"));
+
+        const result = await DeleteCashflow({ id: VALID_ID, userId: VALID_USER_ID });
 
         expect(result.success).toBe(false);
         expect(result.code).toBe("INTERNAL_SERVER_ERROR");
