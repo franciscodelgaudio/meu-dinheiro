@@ -43,6 +43,21 @@ function parseGroupCursor(cursor: string): { id: string; groupId: string | null 
     }
 }
 
+// Idem para date: empate na data é desfeito pelo _id.
+const dateCursorSchema = z.object({
+    id: z.string().regex(/^[0-9a-fA-F]{24}$/),
+    date: z.coerce.date(),
+});
+
+function parseDateCursor(cursor: string): { id: string; date: Date } | null {
+    try {
+        const parsed = dateCursorSchema.safeParse(JSON.parse(cursor));
+        return parsed.success ? parsed.data : null;
+    } catch {
+        return null;
+    }
+}
+
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ userId: string }> }) {
@@ -93,8 +108,10 @@ export async function GET(
     // a próxima página tem valor maior, em decrescente tem valor menor.
     const sortDirection: 1 | -1 = parsedParams?.sort === "asc" ? 1 : -1;
     const cursorOp = sortDirection === 1 ? "$gt" : "$lt";
-    const sortByName = parsedParams?.sortBy === "name";
-    const sortByGroup = parsedParams?.sortBy === "groupId";
+    const sortBy = parsedParams?.sortBy ?? "date";
+    const sortByName = sortBy === "name";
+    const sortByGroup = sortBy === "groupId";
+    const sortByDate = sortBy === "date";
 
     const filters: Record<string, unknown>[] = [
         { userId: new mongoose.Types.ObjectId((await params).userId) },
@@ -135,6 +152,17 @@ export async function GET(
                     ],
                 });
             }
+        } else if (sortByDate) {
+            const decoded = parseDateCursor(cursor);
+            if (decoded) {
+                // Empate na data é desfeito pelo _id.
+                filters.push({
+                    $or: [
+                        { date: { [cursorOp]: decoded.date } },
+                        { date: decoded.date, _id: { [cursorOp]: new mongoose.Types.ObjectId(decoded.id) } },
+                    ],
+                });
+            }
         } else {
             filters.push({ _id: { [cursorOp]: new mongoose.Types.ObjectId(cursor) } });
         }
@@ -144,7 +172,9 @@ export async function GET(
         ? { name: sortDirection, _id: sortDirection }
         : sortByGroup
             ? { groupId: sortDirection, _id: sortDirection }
-            : { _id: sortDirection };
+            : sortByDate
+                ? { date: sortDirection, _id: sortDirection }
+                : { _id: sortDirection };
 
     const cashflows = await Cashflows.aggregate([
         { $match: { $and: filters } },
@@ -160,7 +190,9 @@ export async function GET(
             ? JSON.stringify({ id: String(last._id), name: last.name })
             : sortByGroup
                 ? JSON.stringify({ id: String(last._id), groupId: last.groupId ? String(last.groupId) : null })
-                : last._id
+                : sortByDate
+                    ? JSON.stringify({ id: String(last._id), date: last.date })
+                    : last._id
         : null;
 
     return NextResponse.json({

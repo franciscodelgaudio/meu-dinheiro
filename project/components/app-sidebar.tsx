@@ -97,10 +97,10 @@ export function AppSidebar() {
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    isActive={pathname === `/users/${currentUserId}/cashflows/new`}
-                    render={<Link href={`/users/${currentUserId}/cashflows/new`} />}
+                    isActive={pathname === `/users/${currentUserId}/cashflows`}
+                    render={<Link href={`/users/${currentUserId}/cashflows`} />}
                   >
-                    <span>Criar lançamento</span>
+                    <span>Lançamentos</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>

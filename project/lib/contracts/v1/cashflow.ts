@@ -22,12 +22,12 @@ export function toCreateCashflowInput(userId: string, request: CreateCashflowReq
 export const CashflowQueryParamsV1 = z.object({
     limit: z.coerce.number().int().min(1).max(100).optional().meta({ description: "Quantidade de itens por página (máx. 100).", example: 10 }),
     cursor: z.string().optional().meta({
-        description: "Cursor opaco de paginação retornado como `nextCursor` na resposta anterior. Para `sortBy=name`/`groupId` é uma string JSON `{ id, name }`/`{ id, groupId }`; caso contrário é o `_id` do último item.",
+        description: "Cursor opaco de paginação retornado como `nextCursor` na resposta anterior. Para `sortBy=name`/`groupId`/`date` é uma string JSON `{ id, name }`/`{ id, groupId }`/`{ id, date }`; caso contrário é o `_id` do último item.",
     }),
     type: z.enum(["income", "expense"]).optional().meta({ description: "Filtra lançamentos por tipo." }),
     search: z.string().optional().meta({ description: "Filtra lançamentos cujo nome contenha este texto (case-insensitive)." }),
     sort: z.enum(["asc", "desc"]).optional().meta({ description: "Direção da ordenação. Padrão: desc.", example: "desc" }),
-    sortBy: z.enum(["id", "name", "groupId"]).optional().meta({ description: "Campo usado para ordenar. Padrão: id (_id).", example: "id" }),
+    sortBy: z.enum(["id", "name", "groupId", "date"]).optional().meta({ description: "Campo usado para ordenar. Padrão: date.", example: "date" }),
 }).meta({ id: "CashflowQueryParams" });
 
 export type CashflowQueryParamsV1 = z.infer<typeof CashflowQueryParamsV1>;
