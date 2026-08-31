@@ -3,7 +3,7 @@ import { createDocument } from "zod-openapi";
 import { z } from "zod";
 import { ActionErrorResponseV1, ActionSuccessResponseV1, IdempotencyKeyHeaderV1 } from "@/lib/contracts/v1/common";
 import { CreateUserRequestV1, UserListResponseV1, UserQueryParamsV1 } from "@/lib/contracts/v1/user";
-import { CreateGroupRequestV1 } from "@/lib/contracts/v1/group";
+import { CreateGroupRequestV1, GroupListResponseV1, GroupQueryParamsV1 } from "@/lib/contracts/v1/group";
 import { CashflowListResponseV1, CashflowQueryParamsV1, CreateCashflowRequestV1, UpdateCashflowRequestV1 } from "@/lib/contracts/v1/cashflow";
 
 const userIdPathParam = z.object({
@@ -100,6 +100,17 @@ export const openApiDocumentV1 = createDocument({
                     "500": {
                         description: "Erro interno ao criar o grupo.",
                         content: { "application/json": { schema: ActionErrorResponseV1 } },
+                    },
+                },
+            },
+            get: {
+                tags: ["Group"],
+                summary: "Lista grupos do usuário (paginação por offset)",
+                requestParams: { path: userIdPathParam, query: GroupQueryParamsV1 },
+                responses: {
+                    "200": {
+                        description: "Página de grupos.",
+                        content: { "application/json": { schema: GroupListResponseV1 } },
                     },
                 },
             },
