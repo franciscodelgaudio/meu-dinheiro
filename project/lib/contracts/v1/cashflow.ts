@@ -62,10 +62,19 @@ export const CashflowEntityV1 = z.object({
     updatedAt: z.string().meta({ example: "2026-01-15T12:00:00.000Z" }),
 }).meta({ id: "Cashflow" });
 
+export const CashflowBalanceV1 = z.object({
+    income: z.number().meta({ description: "Soma de todos os lançamentos do tipo income.", example: 8000 }),
+    expense: z.number().meta({ description: "Soma de todos os lançamentos do tipo expense.", example: 3000 }),
+    balance: z.number().meta({ description: "income - expense.", example: 5000 }),
+}).meta({ id: "CashflowBalance" });
+
+export type CashflowBalanceV1 = z.infer<typeof CashflowBalanceV1>;
+
 export const CashflowListResponseV1 = z.object({
     data: z.array(CashflowEntityV1),
     hasNextPage: z.boolean(),
     nextCursor: z.union([z.string(), z.null()]).meta({
         description: "Cursor a ser usado no próximo request via `?cursor=`, ou null se não houver mais páginas.",
     }),
+    balance: CashflowBalanceV1.meta({ description: "Saldo agregado de todos os lançamentos do usuário (não é afetado pelos filtros/paginação desta lista)." }),
 }).meta({ id: "CashflowListResponse" });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Cashflows } from "@/lib/models/cashflow";
 import { CreateCashflow } from "@/lib/actions/cashflow.actions";
+import { computeCashflowBalance } from "@/lib/services/cashflow";
 import { withIdempotency } from "@/lib/idempotency";
 import { CashflowQueryParamsV1, CreateCashflowRequestV1, toCreateCashflowInput } from "@/lib/contracts/v1/cashflow";
 import mongoose from "mongoose";
@@ -84,6 +85,8 @@ export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ userId: string }> }) {
 
+    const { userId } = await params;
+
     const cursor = request.nextUrl.searchParams.get("cursor");
 
     const limitAux = request.nextUrl.searchParams.get("limit");
@@ -114,7 +117,7 @@ export async function GET(
     const sortByDate = sortBy === "date";
 
     const filters: Record<string, unknown>[] = [
-        { userId: new mongoose.Types.ObjectId((await params).userId) },
+        { userId: new mongoose.Types.ObjectId(userId) },
     ];
 
     if (parsedParams?.type) {
@@ -208,9 +211,15 @@ export async function GET(
                     : last._id
         : null;
 
+    const balanceResult = await computeCashflowBalance(userId);
+    const balance = balanceResult.success
+        ? { income: balanceResult.income, expense: balanceResult.expense, balance: balanceResult.balance }
+        : { income: 0, expense: 0, balance: 0 };
+
     return NextResponse.json({
         data: JSON.parse(JSON.stringify(data)),
         hasNextPage,
         nextCursor,
+        balance,
     });
 }

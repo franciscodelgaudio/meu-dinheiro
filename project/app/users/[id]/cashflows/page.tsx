@@ -12,12 +12,12 @@ import {
   Pencil,
   Receipt,
   Search,
-  Tag,
   Trash2,
   Wallet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -50,13 +50,22 @@ type Cashflow = {
   group?: { _id: string; name: string; color: string | null } | null;
 };
 
+type CashflowBalance = {
+  income: number;
+  expense: number;
+  balance: number;
+};
+
 type CashflowListResponse = {
   data: Cashflow[];
   hasNextPage: boolean;
   nextCursor: string | null;
+  balance: CashflowBalance;
 };
 
-const GRID_COLUMNS = "2fr 1fr 1fr 1fr 1fr 3rem";
+const EMPTY_BALANCE: CashflowBalance = { income: 0, expense: 0, balance: 0 };
+
+const GRID_COLUMNS = "2fr 1fr 1fr 1fr 3rem";
 const ROW_HEIGHT = 44;
 
 type SortField = "name" | "date";
@@ -91,6 +100,7 @@ export default function CashflowsPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [balance, setBalance] = useState<CashflowBalance>(EMPTY_BALANCE);
 
   useEffect(() => {
     const timeout = setTimeout(() => setSearch(searchInput.trim()), 300);
@@ -135,6 +145,8 @@ export default function CashflowsPage() {
         throw new Error("Failed to load cashflows");
       }
 
+      setBalance(data.balance);
+
       return data;
     },
   });
@@ -164,6 +176,42 @@ export default function CashflowsPage() {
               </p>
             </div>
             <CreateCashflowSheet userId={userId} onCreated={reload} />
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <Card size="sm">
+              <CardHeader>
+                <CardDescription className="flex items-center gap-1.5">
+                  <ArrowUp className="size-3.5" />
+                  Entradas
+                </CardDescription>
+                <CardTitle className="text-xl text-green-600">
+                  +{formatCurrency(balance.income)}
+                </CardTitle>
+              </CardHeader>
+            </Card>
+            <Card size="sm">
+              <CardHeader>
+                <CardDescription className="flex items-center gap-1.5">
+                  <ArrowDown className="size-3.5" />
+                  Saídas
+                </CardDescription>
+                <CardTitle className="text-xl text-red-600">
+                  -{formatCurrency(balance.expense)}
+                </CardTitle>
+              </CardHeader>
+            </Card>
+            <Card size="sm">
+              <CardHeader>
+                <CardDescription className="flex items-center gap-1.5">
+                  <Wallet className="size-3.5" />
+                  Saldo
+                </CardDescription>
+                <CardTitle className={`text-xl ${balance.balance < 0 ? "text-destructive" : ""}`}>
+                  {formatCurrency(balance.balance)}
+                </CardTitle>
+              </CardHeader>
+            </Card>
           </div>
 
           <div className="relative max-w-xs">
@@ -235,10 +283,6 @@ export default function CashflowsPage() {
                     </SortableHeader>
                   </TableHead>
                   <TableHead className="flex items-center gap-2">
-                    <Tag className="size-4" />
-                    Tipo
-                  </TableHead>
-                  <TableHead className="flex items-center gap-2">
                     <Layers className="size-4" />
                     Grupo
                   </TableHead>
@@ -270,11 +314,6 @@ export default function CashflowsPage() {
                       <TableCell className="flex items-center">
                         {new Date(cashflow.date).toLocaleDateString("pt-BR")}
                       </TableCell>
-                      <TableCell className="flex items-center">
-                        <Badge variant={cashflow.type === "income" ? "default" : "destructive"}>
-                          {cashflow.type === "income" ? "Entrada" : "Saída"}
-                        </Badge>
-                      </TableCell>
                       <TableCell className="flex items-center truncate">
                         {cashflow.group ? (
                           <Badge
@@ -292,7 +331,12 @@ export default function CashflowsPage() {
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="flex items-center justify-end text-right">
+                      <TableCell
+                        className={`flex items-center justify-end text-right ${
+                          cashflow.type === "income" ? "text-green-600" : "text-red-600"
+                        }`}
+                      >
+                        {cashflow.type === "income" ? "+" : "-"}
                         {formatCurrency(cashflow.total)}
                       </TableCell>
                       <TableCell className="flex items-center justify-end">
