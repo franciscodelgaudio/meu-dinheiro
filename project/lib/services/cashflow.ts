@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { z } from "zod";
 import { Cashflows } from "@/lib/models/cashflow";
+import { Groups } from "@/lib/models/group";
 import type { ICashflow } from "@/lib/models/cashflow";
 
 type CashflowInput = Pick<ICashflow, "type" | "total">;
@@ -14,6 +15,23 @@ export function applyCashflowToTotal(total: number, cashflow: CashflowInput): nu
         default:
             throw new Error(`Invalid cashflow type: ${cashflow.type}`);
     }
+}
+
+export type CashflowGroupSnapshot = {
+    groupId: string | null;
+    type: "income" | "expense";
+    total: number;
+};
+
+type SyncGroupTotalResult =
+    | { success: true; code?: undefined }
+    | { success: false; message: string; code: "NOT_FOUND" | "INTERNAL_SERVER_ERROR" };
+
+export async function syncGroupTotalOnCashflowChange(
+    previous: CashflowGroupSnapshot | null,
+    next: CashflowGroupSnapshot | null,
+): Promise<SyncGroupTotalResult> {
+    throw new Error("Not implemented");
 }
 
 type ComputeCashflowBalanceResult =

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import {
   ArrowDown,
@@ -29,11 +29,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { CreateGroupSheet } from "@/components/groups/create-group-sheet";
 import { EditGroupSheet } from "@/components/groups/edit-group-sheet";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { formatCurrency } from "@/lib/utils/currency";
-import { useCursorPaginationVirtualizer } from "@/lib/hooks/use-cursor-pagination-virtualizer";
 
 type Group = {
   _id: string;
@@ -50,7 +58,29 @@ type GroupListResponse = {
 };
 
 const GRID_COLUMNS = "2fr 1.5fr 1fr";
-const ROW_HEIGHT = 44;
+
+// Páginas visíveis ao redor da atual; o restante vira reticências.
+const PAGE_SIBLINGS = 1;
+
+function getPageRange(page: number, totalPages: number): (number | "ellipsis")[] {
+  const pages = new Set<number>([1, totalPages]);
+  for (let offset = -PAGE_SIBLINGS; offset <= PAGE_SIBLINGS; offset++) {
+    const candidate = page + offset;
+    if (candidate >= 1 && candidate <= totalPages) {
+      pages.add(candidate);
+    }
+  }
+
+  const sorted = [...pages].sort((a, b) => a - b);
+  const result: (number | "ellipsis")[] = [];
+  sorted.forEach((current, index) => {
+    if (index > 0 && current - sorted[index - 1] > 1) {
+      result.push("ellipsis");
+    }
+    result.push(current);
+  });
+  return result;
+}
 
 type SortField = "name" | "total" | "createdAt";
 type SortOrder = "asc" | "desc";
@@ -84,11 +114,53 @@ export default function GroupsPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+  const isFetchingRef = useRef(false);
 
   useEffect(() => {
     const timeout = setTimeout(() => setSearch(searchInput.trim()), 300);
     return () => clearTimeout(timeout);
   }, [searchInput]);
+
+  function loadPage(targetPage: number) {
+    if (isFetchingRef.current) {
+      return;
+    }
+    isFetchingRef.current = true;
+    setStatus("loading");
+
+    const url = new URL(`/api/v1/user/${userId}/group`, window.location.origin);
+    url.searchParams.set("sortBy", sortBy);
+    url.searchParams.set("sort", sortOrder);
+    url.searchParams.set("page", String(targetPage));
+    if (search) {
+      url.searchParams.set("search", search);
+    }
+
+    fetch(url)
+      .then(async (response) => {
+        const data: GroupListResponse = await response.json();
+        if (!response.ok) {
+          throw new Error("Failed to load groups");
+        }
+        setGroups(data.data);
+        setTotalPages(Math.max(data.totalPages, 1));
+        setPage(data.page);
+        setStatus("idle");
+      })
+      .catch(() => setStatus("error"))
+      .finally(() => {
+        isFetchingRef.current = false;
+      });
+  }
+
+  useEffect(() => {
+    loadPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, sortBy, sortOrder, search]);
 
   function toggleSort(field: SortField) {
     if (sortBy === field) {
@@ -98,41 +170,6 @@ export default function GroupsPage() {
       setSortOrder("asc");
     }
   }
-
-  const {
-    items: groups,
-    status,
-    scrollRef,
-    headerRef,
-    rowVirtualizer,
-    virtualItems,
-    reload,
-  } = useCursorPaginationVirtualizer<Group>({
-    estimateSize: ROW_HEIGHT,
-    deps: [userId, sortBy, sortOrder, search],
-    fetchPage: async (cursor) => {
-      const url = new URL(`/api/v1/user/${userId}/group`, window.location.origin);
-      url.searchParams.set("sortBy", sortBy);
-      url.searchParams.set("sort", sortOrder);
-      url.searchParams.set("page", cursor ?? "1");
-      if (search) {
-        url.searchParams.set("search", search);
-      }
-
-      const response = await fetch(url);
-      const data: GroupListResponse = await response.json();
-
-      if (!response.ok) {
-        throw new Error("Failed to load groups");
-      }
-
-      return {
-        data: data.data,
-        hasNextPage: data.page < data.totalPages,
-        nextCursor: data.page < data.totalPages ? String(data.page + 1) : null,
-      };
-    },
-  });
 
   async function handleDelete(group: Group) {
     const response = await fetch(`/api/v1/user/${userId}/group/${group._id}`, {
@@ -144,13 +181,13 @@ export default function GroupsPage() {
       return;
     }
 
-    reload();
+    loadPage(page);
   }
 
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+    <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="flex flex-col gap-4 p-4">
-        <div ref={headerRef} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-row items-center justify-between">
             <div>
               <h1 className="text-lg font-semibold tracking-tight">Grupos</h1>
@@ -158,7 +195,7 @@ export default function GroupsPage() {
                 Grupos de orçamento do usuário {userId}.
               </p>
             </div>
-            <CreateGroupSheet userId={userId} onCreated={reload} />
+            <CreateGroupSheet userId={userId} onCreated={() => loadPage(1)} />
           </div>
 
           <div className="relative max-w-xs">
@@ -178,7 +215,7 @@ export default function GroupsPage() {
           onOpenChange={(open) => {
             if (!open) setEditingGroup(null);
           }}
-          onUpdated={reload}
+          onUpdated={() => loadPage(page)}
         />
 
         <ConfirmDialog
@@ -232,64 +269,103 @@ export default function GroupsPage() {
                   <TableHead />
                 </TableRow>
               </TableHeader>
-              <TableBody
-                style={{ display: "grid", height: rowVirtualizer.getTotalSize(), position: "relative" }}
-              >
-                {virtualItems.map((virtualRow) => {
-                  const group = groups[virtualRow.index];
-                  return (
-                    <TableRow
-                      key={group._id}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: GRID_COLUMNS,
-                        position: "absolute",
-                        width: "100%",
-                        height: virtualRow.size,
-                        transform: `translateY(${virtualRow.start - rowVirtualizer.options.scrollMargin}px)`,
-                      }}
-                    >
-                      <TableCell className="flex items-center gap-2 truncate">
-                        <span
-                          className="size-2.5 shrink-0 rounded-full border"
-                          style={{ backgroundColor: group.color ?? undefined }}
+              <TableBody style={{ display: "grid" }}>
+                {groups.map((group) => (
+                  <TableRow
+                    key={group._id}
+                    style={{ display: "grid", gridTemplateColumns: GRID_COLUMNS }}
+                  >
+                    <TableCell className="flex items-center gap-2 truncate">
+                      <span
+                        className="size-2.5 shrink-0 rounded-full border"
+                        style={{ backgroundColor: group.color ?? undefined }}
+                      />
+                      <span className="truncate">{group.name}</span>
+                    </TableCell>
+                    <TableCell className="flex items-center justify-end text-right">
+                      {formatCurrency(group.total)}
+                    </TableCell>
+                    <TableCell className="flex items-center justify-end">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button variant="ghost" size="icon-sm">
+                              <MoreHorizontal />
+                              <span className="sr-only">Ações</span>
+                            </Button>
+                          }
                         />
-                        <span className="truncate">{group.name}</span>
-                      </TableCell>
-                      <TableCell className="flex items-center justify-end text-right">
-                        {formatCurrency(group.total)}
-                      </TableCell>
-                      <TableCell className="flex items-center justify-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <Button variant="ghost" size="icon-sm">
-                                <MoreHorizontal />
-                                <span className="sr-only">Ações</span>
-                              </Button>
-                            }
-                          />
-                          <DropdownMenuContent>
-                            <DropdownMenuItem onClick={() => setEditingGroup(group)}>
-                              <Pencil />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => setDeletingGroup(group)}
-                            >
-                              <Trash2 />
-                              Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                        <DropdownMenuContent>
+                          <DropdownMenuItem onClick={() => setEditingGroup(group)}>
+                            <Pencil />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setDeletingGroup(group)}
+                          >
+                            <Trash2 />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </div>
+        )}
+
+        {totalPages > 1 && (
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  text="Anterior"
+                  aria-disabled={page === 1}
+                  className={page === 1 ? "pointer-events-none opacity-50" : undefined}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    if (page > 1) loadPage(page - 1);
+                  }}
+                />
+              </PaginationItem>
+              {getPageRange(page, totalPages).map((item, index) =>
+                item === "ellipsis" ? (
+                  <PaginationItem key={`ellipsis-${index}`}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                ) : (
+                  <PaginationItem key={item}>
+                    <PaginationLink
+                      href="#"
+                      isActive={item === page}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (item !== page) loadPage(item);
+                      }}
+                    >
+                      {item}
+                    </PaginationLink>
+                  </PaginationItem>
+                )
+              )}
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  text="Próxima"
+                  aria-disabled={page === totalPages}
+                  className={page === totalPages ? "pointer-events-none opacity-50" : undefined}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    if (page < totalPages) loadPage(page + 1);
+                  }}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
         )}
       </div>
     </div>
