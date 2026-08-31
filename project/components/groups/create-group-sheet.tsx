@@ -1,32 +1,39 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useParams } from "next/navigation";
 import { XIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MonthPicker, formatMonthYear, type MonthYear } from "@/components/month-picker";
 import { useSubmitState } from "@/lib/hooks/use-submit-state";
 
-export default function CreateGroupPage() {
-  const { id: userId } = useParams<{ id: string }>();
+type CreateGroupSheetProps = {
+  userId: string;
+  onCreated?: () => void;
+};
+
+export function CreateGroupSheet({ userId, onCreated }: CreateGroupSheetProps) {
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [total, setTotal] = useState("");
+  const [total, setTotal] = useState(0);
   const [color, setColor] = useState("#18181b");
   const [months, setMonths] = useState<MonthYear[]>([]);
-  const { state, run } = useSubmitState();
+  const { state, run, reset } = useSubmitState();
 
   function addMonth(value: MonthYear) {
     setMonths((current) =>
@@ -46,6 +53,10 @@ export default function CreateGroupPage() {
     event.preventDefault();
 
     const result = await run(async () => {
+      if (total <= 0) {
+        return { success: false as const, message: "Informe um valor maior que zero." };
+      }
+
       const response = await fetch(`/api/v1/user/${userId}/group`, {
         method: "POST",
         headers: {
@@ -56,7 +67,7 @@ export default function CreateGroupPage() {
           name,
           description: description || undefined,
           date: months,
-          total: Number(total),
+          total,
           color,
         }),
       });
@@ -74,22 +85,34 @@ export default function CreateGroupPage() {
     if (result.success) {
       setName("");
       setDescription("");
-      setTotal("");
+      setTotal(0);
+      setColor("#18181b");
       setMonths([]);
+      onCreated?.();
+      setOpen(false);
     }
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Criar grupo</CardTitle>
-          <CardDescription>
+    <Sheet
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          reset();
+        }
+      }}
+    >
+      <SheetTrigger render={<Button>Novo grupo</Button>} />
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Criar grupo</SheetTitle>
+          <SheetDescription>
             Cadastre um novo grupo de orçamento para o usuário {userId}.
-          </CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="flex flex-col gap-4">
+          </SheetDescription>
+        </SheetHeader>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="name">Nome</Label>
               <Input
@@ -111,16 +134,7 @@ export default function CreateGroupPage() {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="total">Valor total</Label>
-              <Input
-                id="total"
-                type="number"
-                min={1}
-                step="0.01"
-                value={total}
-                onChange={(event) => setTotal(event.target.value)}
-                placeholder="1500"
-                required
-              />
+              <CurrencyInput id="total" value={total} onChange={setTotal} required />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="color">Cor</Label>
@@ -159,18 +173,17 @@ export default function CreateGroupPage() {
             {state.status === "success" && (
               <p className="text-sm text-primary">{state.message}</p>
             )}
-          </CardContent>
-          <CardFooter>
-            <Button
-              type="submit"
-              disabled={state.status === "loading" || months.length === 0}
-              className="w-full"
-            >
+          </div>
+          <SheetFooter className="flex-row justify-end">
+            <SheetClose render={<Button type="button" variant="outline" />}>
+              Cancelar
+            </SheetClose>
+            <Button type="submit" disabled={state.status === "loading" || months.length === 0}>
               {state.status === "loading" ? "Criando..." : "Criar grupo"}
             </Button>
-          </CardFooter>
+          </SheetFooter>
         </form>
-      </Card>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }

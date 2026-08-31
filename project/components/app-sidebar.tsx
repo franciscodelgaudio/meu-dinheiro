@@ -89,10 +89,10 @@ export function AppSidebar() {
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    isActive={pathname === `/users/${currentUserId}/groups/new`}
-                    render={<Link href={`/users/${currentUserId}/groups/new`} />}
+                    isActive={pathname === `/users/${currentUserId}/groups`}
+                    render={<Link href={`/users/${currentUserId}/groups`} />}
                   >
-                    <span>Criar grupo</span>
+                    <span>Grupos</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>

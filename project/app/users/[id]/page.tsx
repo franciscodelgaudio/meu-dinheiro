@@ -24,8 +24,8 @@ export default async function UserPage({
           <CardDescription className="break-all">{id}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          <Link href={`/users/${id}/groups/new`} className={cn(buttonVariants({ variant: "outline" }))}>
-            Criar grupo
+          <Link href={`/users/${id}/groups`} className={cn(buttonVariants({ variant: "outline" }))}>
+            Grupos
           </Link>
           <Link href={`/users/${id}/cashflows`} className={cn(buttonVariants({ variant: "outline" }))}>
             Criar lançamento
