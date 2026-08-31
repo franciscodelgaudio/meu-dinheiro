@@ -38,8 +38,8 @@ describe("UpdateGroup", () => {
         expect(mockFindOneAndUpdate).not.toHaveBeenCalled();
     });
 
-    it("retorna VALIDATION_ERROR quando o total é menor que 1", async () => {
-        const result = await UpdateGroup({ id: VALID_ID, userId: VALID_USER_ID, total: 0 });
+    it("retorna VALIDATION_ERROR quando o total é negativo", async () => {
+        const result = await UpdateGroup({ id: VALID_ID, userId: VALID_USER_ID, total: -1 });
 
         expect(result.success).toBe(false);
         expect(result.code).toBe("VALIDATION_ERROR");

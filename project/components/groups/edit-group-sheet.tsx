@@ -12,7 +12,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
-import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useSubmitState } from "@/lib/hooks/use-submit-state";
@@ -35,7 +34,6 @@ type EditGroupSheetProps = {
 export function EditGroupSheet({ userId, group, onOpenChange, onUpdated }: EditGroupSheetProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [total, setTotal] = useState(0);
   const [color, setColor] = useState("#18181b");
   const { state, run, reset } = useSubmitState();
 
@@ -44,7 +42,6 @@ export function EditGroupSheet({ userId, group, onOpenChange, onUpdated }: EditG
 
     setName(group.name);
     setDescription(group.description ?? "");
-    setTotal(group.total);
     setColor(group.color ?? "#18181b");
     reset();
   }, [group, reset]);
@@ -54,10 +51,6 @@ export function EditGroupSheet({ userId, group, onOpenChange, onUpdated }: EditG
     if (!group) return;
 
     const result = await run(async () => {
-      if (total <= 0) {
-        return { success: false as const, message: "Informe um valor maior que zero." };
-      }
-
       const response = await fetch(`/api/v1/user/${userId}/group/${group._id}`, {
         method: "PUT",
         headers: {
@@ -66,7 +59,6 @@ export function EditGroupSheet({ userId, group, onOpenChange, onUpdated }: EditG
         body: JSON.stringify({
           name,
           description: description || undefined,
-          total,
           color,
         }),
       });
@@ -124,10 +116,6 @@ export function EditGroupSheet({ userId, group, onOpenChange, onUpdated }: EditG
                 onChange={(event) => setDescription(event.target.value)}
                 placeholder="Gastos da viagem de férias"
               />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="edit-group-total">Valor total</Label>
-              <CurrencyInput id="edit-group-total" value={total} onChange={setTotal} required />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="edit-group-color">Cor</Label>
