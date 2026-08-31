@@ -27,6 +27,7 @@ export const GroupQueryParamsV1 = z.object({
     page: z.coerce.number().int().min(1).optional().meta({ description: "Página retornada (1-indexada).", example: 1 }),
     limit: z.coerce.number().int().min(1).max(100).optional().meta({ description: "Quantidade de itens por página (máx. 100).", example: 10 }),
     search: z.string().optional().meta({ description: "Filtra grupos cujo nome contenha este texto (case-insensitive)." }),
+    id: z.string().regex(/^[0-9a-fA-F]{24}$/).optional().meta({ description: "Filtra por um _id de grupo específico." }),
     sort: z.enum(["asc", "desc"]).optional().meta({ description: "Direção da ordenação. Padrão: desc.", example: "desc" }),
     sortBy: z.enum(["name", "total", "createdAt"]).optional().meta({ description: "Campo usado para ordenar. Padrão: createdAt.", example: "createdAt" }),
 }).meta({ id: "GroupQueryParams" });

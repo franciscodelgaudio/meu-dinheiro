@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/date-picker";
+import { GroupCombobox } from "@/components/cashflows/group-combobox";
 import { useSubmitState } from "@/lib/hooks/use-submit-state";
 
 export type EditableCashflow = {
@@ -166,13 +167,8 @@ export function EditCashflowSheet({ userId, cashflow, onOpenChange, onUpdated }:
               <DatePicker value={date} onChange={setDate} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="edit-groupId">ID do grupo (opcional)</Label>
-              <Input
-                id="edit-groupId"
-                value={groupId}
-                onChange={(event) => setGroupId(event.target.value)}
-                placeholder="665f1c2e2f8b9a0012345678"
-              />
+              <Label htmlFor="edit-groupId">Grupo (opcional)</Label>
+              <GroupCombobox id="edit-groupId" userId={userId} value={groupId} onChange={setGroupId} />
             </div>
             {state.status === "error" && (
               <p className="text-sm text-destructive">{state.message}</p>

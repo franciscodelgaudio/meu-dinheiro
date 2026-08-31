@@ -44,6 +44,7 @@ export async function GET(
     const searchAux = request.nextUrl.searchParams.get("search");
     const sortAux = request.nextUrl.searchParams.get("sort");
     const sortByAux = request.nextUrl.searchParams.get("sortBy");
+    const idAux = request.nextUrl.searchParams.get("id");
 
     // searchParams.get() devolve null quando ausente; z.optional() só aceita
     // undefined, então precisa normalizar antes do parse.
@@ -53,6 +54,7 @@ export async function GET(
         search: searchAux ?? undefined,
         sort: sortAux ?? undefined,
         sortBy: sortByAux ?? undefined,
+        id: idAux ?? undefined,
     });
 
     const page = parsedParams?.page ?? 1;
@@ -66,6 +68,10 @@ export async function GET(
 
     if (parsedParams?.search) {
         filters.push({ name: { $regex: escapeRegex(parsedParams.search), $options: "i" } });
+    }
+
+    if (parsedParams?.id) {
+        filters.push({ _id: new mongoose.Types.ObjectId(parsedParams.id) });
     }
 
     const [result] = await Groups.aggregate([
