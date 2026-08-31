@@ -1,6 +1,15 @@
 import { z } from "zod";
-import { Cashflows } from "@/lib/models/cashflow";
+import { Cashflows, type ICashflow } from "@/lib/models/cashflow";
 import { CreateCashflowRequestV1 } from "@/lib/contracts/v1/cashflow";
+import { syncGroupTotalOnCashflowChange, type CashflowGroupSnapshot } from "@/lib/services/cashflow";
+
+function toSnapshot(cashflow: Pick<ICashflow, "groupId" | "type" | "total">): CashflowGroupSnapshot {
+    return {
+        groupId: cashflow.groupId ? cashflow.groupId.toString() : null,
+        type: cashflow.type,
+        total: cashflow.total,
+    };
+}
 
 const CashflowSchema = CreateCashflowRequestV1.extend({
     userId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid userId"),
@@ -26,7 +35,13 @@ export async function CreateCashflow(data: z.infer<typeof CashflowSchema>) {
     };
 
     try {
-        await Cashflows.create(newGroup);
+        const created = await Cashflows.create(newGroup);
+
+        const syncResult = await syncGroupTotalOnCashflowChange(null, toSnapshot(created));
+        if (!syncResult.success) {
+            return { success: false as const, message: syncResult.message, code: syncResult.code };
+        }
+
         return { success: true as const, message: "User created successfully" };
     } catch (error: any) {
         if (error.code === 11000) {
@@ -51,10 +66,20 @@ export async function UpdateCashflow(data: z.infer<typeof UpdateCashflowSchema>)
     const { id, userId, ...updateFields } = parsedData.data;
 
     try {
+        const previous = await Cashflows.findOne({ _id: id, userId });
+        if (!previous) {
+            return { success: false as const, message: "Cashflow not found", code: "NOT_FOUND" as const };
+        }
+
         const updated = await Cashflows.findOneAndUpdate({ _id: id, userId }, updateFields, { new: true });
 
         if (!updated) {
             return { success: false as const, message: "Cashflow not found", code: "NOT_FOUND" as const };
+        }
+
+        const syncResult = await syncGroupTotalOnCashflowChange(toSnapshot(previous), toSnapshot(updated));
+        if (!syncResult.success) {
+            return { success: false as const, message: syncResult.message, code: syncResult.code };
         }
 
         return { success: true as const, message: "Cashflow updated successfully" };
@@ -85,6 +110,11 @@ export async function DeleteCashflow(data: z.infer<typeof DeleteCashflowSchema>)
 
         if (!deleted) {
             return { success: false as const, message: "Cashflow not found", code: "NOT_FOUND" as const };
+        }
+
+        const syncResult = await syncGroupTotalOnCashflowChange(toSnapshot(deleted), null);
+        if (!syncResult.success) {
+            return { success: false as const, message: syncResult.message, code: syncResult.code };
         }
 
         return { success: true as const, message: "Cashflow deleted successfully" };

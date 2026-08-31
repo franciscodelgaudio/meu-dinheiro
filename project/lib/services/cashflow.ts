@@ -31,7 +31,49 @@ export async function syncGroupTotalOnCashflowChange(
     previous: CashflowGroupSnapshot | null,
     next: CashflowGroupSnapshot | null,
 ): Promise<SyncGroupTotalResult> {
-    throw new Error("Not implemented");
+    const previousGroupId = previous?.groupId ?? null;
+    const nextGroupId = next?.groupId ?? null;
+    const reversalDelta = previous ? -applyCashflowToTotal(0, previous) : 0;
+    const applyDelta = next ? applyCashflowToTotal(0, next) : 0;
+
+    try {
+        if (previousGroupId === nextGroupId) {
+            if (previousGroupId === null) {
+                return { success: true };
+            }
+
+            const updated = await Groups.findByIdAndUpdate(previousGroupId, {
+                $inc: { total: reversalDelta + applyDelta },
+            });
+            if (!updated) {
+                return { success: false, message: "Group not found", code: "NOT_FOUND" };
+            }
+
+            return { success: true };
+        }
+
+        if (previousGroupId !== null) {
+            const updatedPrevious = await Groups.findByIdAndUpdate(previousGroupId, {
+                $inc: { total: reversalDelta },
+            });
+            if (!updatedPrevious) {
+                return { success: false, message: "Group not found", code: "NOT_FOUND" };
+            }
+        }
+
+        if (nextGroupId !== null) {
+            const updatedNext = await Groups.findByIdAndUpdate(nextGroupId, {
+                $inc: { total: applyDelta },
+            });
+            if (!updatedNext) {
+                return { success: false, message: "Group not found", code: "NOT_FOUND" };
+            }
+        }
+
+        return { success: true };
+    } catch {
+        return { success: false, message: "Error syncing group total", code: "INTERNAL_SERVER_ERROR" };
+    }
 }
 
 type ComputeCashflowBalanceResult =

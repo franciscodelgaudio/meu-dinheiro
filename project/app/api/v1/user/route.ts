@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { CreateUser } from "@/lib/actions/user.actions";
+import { CreateUser, ListUsers } from "@/lib/actions/user.actions";
 import { CreateUserRequestV1, toCreateUserInput, UserQueryParamsV1 } from "@/lib/contracts/v1/user";
-import { Users } from "@/lib/models/user";
 import { getRateLimiter, getClientIp } from "@/lib/rateLimit";
 import { STATUS_CODES } from "@/lib/utils/statusCode";
-import mongoose from "mongoose";
-
-function escapeRegex(value: string) {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 // Cria usuário é uma rota sem autenticação (ainda não temos auth), por isso
 // o limite é por IP para conter abuso/flood de criação de contas.
@@ -63,7 +57,6 @@ export async function GET(request: NextRequest) {
     const pageAux = request.nextUrl.searchParams.get("page");
     const limitAux = request.nextUrl.searchParams.get("limit");
     const searchAux = request.nextUrl.searchParams.get("search");
-    const userIdAux = request.nextUrl.searchParams.get("userId");
 
     // searchParams.get() devolve null quando ausente; z.optional() só aceita
     // undefined, então precisa normalizar antes do parse.
@@ -71,44 +64,25 @@ export async function GET(request: NextRequest) {
         page: pageAux ?? undefined,
         limit: limitAux ?? undefined,
         search: searchAux ?? undefined,
-        userId: userIdAux ?? undefined,
     });
 
     const page = parsedParams?.page ?? 1;
     const limit = parsedParams?.limit ?? 10;
 
-    const filters: Record<string, unknown>[] = [];
+    const result = await ListUsers({
+        offset: (page - 1) * limit,
+        limit,
+        search: parsedParams?.search,
+    });
 
-    if (parsedParams?.userId) {
-        filters.push({ _id: new mongoose.Types.ObjectId(parsedParams.userId) });
+    if (!result.success) {
+        return NextResponse.json(result, { status: STATUS_CODES[result.code] });
     }
-
-    if (parsedParams?.search) {
-        filters.push({ name: { $regex: escapeRegex(parsedParams.search), $options: "i" } });
-    }
-
-    const match = filters.length ? { $and: filters } : {};
-
-    const [result] = await Users.aggregate([
-        { $match: match },
-        {
-            $facet: {
-                data: [
-                    { $sort: { _id: -1 } },
-                    { $skip: (page - 1) * limit },
-                    { $limit: limit },
-                ],
-                totalCount: [{ $count: "count" }],
-            },
-        },
-    ]);
-
-    const total = result.totalCount[0]?.count ?? 0;
 
     return NextResponse.json({
         data: JSON.parse(JSON.stringify(result.data)),
-        total,
-        page,
-        totalPages: Math.ceil(total / limit),
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
     });
 }

@@ -23,8 +23,7 @@ export function toCreateUserInput(request: CreateUserRequestV1): CreateUserInput
 export const UserQueryParamsV1 = z.object({
     page: z.coerce.number().int().min(1).optional().meta({ description: "Página retornada (1-indexada).", example: 1 }),
     limit: z.coerce.number().int().min(1).max(100).optional().meta({ description: "Quantidade de itens por página (máx. 100).", example: 10 }),
-    search: z.string().optional().meta({ description: "Filtra usuários cujo nome contenha este texto (case-insensitive)." }),
-    userId: z.string().regex(/^[0-9a-fA-F]{24}$/).optional().meta({ description: "Filtra por um _id de usuário específico (ObjectId do Mongo)." }),
+    search: z.string().optional().meta({ description: "Filtra usuários cujo nome ou email contenha este texto (case-insensitive)." }),
 });
 
 export type UserQueryParamsV1 = z.infer<typeof UserQueryParamsV1>;
