@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { UpdateCashflow } from "@/lib/actions/cashflow.actions";
+import { DeleteCashflow, UpdateCashflow } from "@/lib/actions/cashflow.actions";
 import { UpdateCashflowRequestV1, toUpdateCashflowInput } from "@/lib/contracts/v1/cashflow";
 import { STATUS_CODES } from "@/lib/utils/statusCode";
 
@@ -19,6 +19,21 @@ export async function PUT(
     }
 
     const result = await UpdateCashflow(toUpdateCashflowInput(userId, cashflowId, parsedBody.data));
+
+    if (!result.success) {
+        return NextResponse.json(result, { status: STATUS_CODES[result.code] });
+    }
+
+    return NextResponse.json(result, { status: 200 });
+}
+
+export async function DELETE(
+    request: NextRequest,
+    { params }: { params: Promise<{ userId: string; cashflowId: string }> }) {
+
+    const { userId, cashflowId } = await params;
+
+    const result = await DeleteCashflow({ id: cashflowId, userId });
 
     if (!result.success) {
         return NextResponse.json(result, { status: STATUS_CODES[result.code] });

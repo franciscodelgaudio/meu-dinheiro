@@ -66,6 +66,29 @@ export async function UpdateCashflow(data: z.infer<typeof UpdateCashflowSchema>)
     }
 }
 
-export async function DeleteCashflow(data: { id: string; userId: string }) {
-    return { success: false as const, message: "Not implemented", code: "INTERNAL_SERVER_ERROR" as const };
+const DeleteCashflowSchema = z.object({
+    id: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid id"),
+    userId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid userId"),
+});
+
+export async function DeleteCashflow(data: z.infer<typeof DeleteCashflowSchema>) {
+
+    const parsedData = DeleteCashflowSchema.safeParse(data);
+    if (!parsedData.success) {
+        return { success: false as const, message: "Invalid user data", code: "VALIDATION_ERROR" as const };
+    }
+
+    const { id, userId } = parsedData.data;
+
+    try {
+        const deleted = await Cashflows.findOneAndDelete({ _id: id, userId });
+
+        if (!deleted) {
+            return { success: false as const, message: "Cashflow not found", code: "NOT_FOUND" as const };
+        }
+
+        return { success: true as const, message: "Cashflow deleted successfully" };
+    } catch {
+        return { success: false as const, message: "Error deleting cashflow", code: "INTERNAL_SERVER_ERROR" as const };
+    }
 }

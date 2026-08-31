@@ -1,7 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
-import { CalendarDays, MoreHorizontal, Pencil, Receipt, Tag, Trash2, Wallet } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CalendarDays,
+  MoreHorizontal,
+  Pencil,
+  Receipt,
+  Tag,
+  Trash2,
+  Wallet,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +31,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CreateCashflowSheet } from "@/components/cashflows/create-cashflow-sheet";
+import { EditCashflowSheet } from "@/components/cashflows/edit-cashflow-sheet";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { formatCurrency } from "@/lib/utils/currency";
 import { useCursorPaginationVirtualizer } from "@/lib/hooks/use-cursor-pagination-virtualizer";
 
@@ -29,6 +43,7 @@ type Cashflow = {
   date: string;
   total: number;
   type: "income" | "expense";
+  groupId: string | null;
 };
 
 type CashflowListResponse = {
@@ -40,8 +55,24 @@ type CashflowListResponse = {
 const GRID_COLUMNS = "2fr 1fr 1fr 1fr 3rem";
 const ROW_HEIGHT = 44;
 
+type SortField = "name" | "date";
+type SortOrder = "asc" | "desc";
+
 export default function CashflowsPage() {
   const { id: userId } = useParams<{ id: string }>();
+  const [editingCashflow, setEditingCashflow] = useState<Cashflow | null>(null);
+  const [deletingCashflow, setDeletingCashflow] = useState<Cashflow | null>(null);
+  const [sortBy, setSortBy] = useState<SortField>("date");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+
+  function toggleSort(field: SortField) {
+    if (sortBy === field) {
+      setSortOrder((order) => (order === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(field);
+      setSortOrder("asc");
+    }
+  }
 
   const {
     items: cashflows,
@@ -53,9 +84,11 @@ export default function CashflowsPage() {
     reload,
   } = useCursorPaginationVirtualizer<Cashflow>({
     estimateSize: ROW_HEIGHT,
-    deps: [userId],
+    deps: [userId, sortBy, sortOrder],
     fetchPage: async (cursor) => {
       const url = new URL(`/api/v1/user/${userId}/cashflow`, window.location.origin);
+      url.searchParams.set("sortBy", sortBy);
+      url.searchParams.set("sort", sortOrder);
       if (cursor) {
         url.searchParams.set("cursor", cursor);
       }
@@ -71,6 +104,19 @@ export default function CashflowsPage() {
     },
   });
 
+  async function handleDelete(cashflow: Cashflow) {
+    const response = await fetch(`/api/v1/user/${userId}/cashflow/${cashflow._id}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      window.alert("Erro ao excluir lançamento.");
+      return;
+    }
+
+    reload();
+  }
+
   return (
     <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
       <div className="flex flex-col gap-4 p-4">
@@ -83,6 +129,29 @@ export default function CashflowsPage() {
           </div>
           <CreateCashflowSheet userId={userId} onCreated={reload} />
         </div>
+
+        <EditCashflowSheet
+          userId={userId}
+          cashflow={editingCashflow}
+          onOpenChange={(open) => {
+            if (!open) setEditingCashflow(null);
+          }}
+          onUpdated={reload}
+        />
+
+        <ConfirmDialog
+          open={deletingCashflow !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeletingCashflow(null);
+          }}
+          title="Excluir lançamento"
+          description={`Tem certeza que deseja excluir "${deletingCashflow?.name}"? Essa ação não pode ser desfeita.`}
+          confirmLabel="Excluir"
+          variant="destructive"
+          onConfirm={() => {
+            if (deletingCashflow) return handleDelete(deletingCashflow);
+          }}
+        />
 
         {status === "error" && (
           <p className="text-sm text-destructive">Erro ao carregar lançamentos.</p>
@@ -157,11 +226,14 @@ export default function CashflowsPage() {
                             }
                           />
                           <DropdownMenuContent>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setEditingCashflow(cashflow)}>
                               <Pencil />
                               Editar
                             </DropdownMenuItem>
-                            <DropdownMenuItem variant="destructive">
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setDeletingCashflow(cashflow)}
+                            >
                               <Trash2 />
                               Excluir
                             </DropdownMenuItem>

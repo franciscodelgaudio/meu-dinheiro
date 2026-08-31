@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -10,7 +10,6 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
@@ -26,34 +25,57 @@ import {
 import { DatePicker } from "@/components/date-picker";
 import { useSubmitState } from "@/lib/hooks/use-submit-state";
 
-type CreateCashflowSheetProps = {
-  userId: string;
-  onCreated?: () => void;
+export type EditableCashflow = {
+  _id: string;
+  name: string;
+  description: string | null;
+  date: string;
+  total: number;
+  type: "income" | "expense";
+  groupId: string | null;
 };
 
-export function CreateCashflowSheet({ userId, onCreated }: CreateCashflowSheetProps) {
-  const [open, setOpen] = useState(false);
+type EditCashflowSheetProps = {
+  userId: string;
+  cashflow: EditableCashflow | null;
+  onOpenChange: (open: boolean) => void;
+  onUpdated?: () => void;
+};
+
+export function EditCashflowSheet({ userId, cashflow, onOpenChange, onUpdated }: EditCashflowSheetProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [total, setTotal] = useState(0);
   const [type, setType] = useState<"income" | "expense">("expense");
-  const [date, setDate] = useState<Date | undefined>(new Date());
+  const [date, setDate] = useState<Date | undefined>(undefined);
   const [groupId, setGroupId] = useState("");
   const { state, run, reset } = useSubmitState();
 
+  useEffect(() => {
+    if (!cashflow) return;
+
+    setName(cashflow.name);
+    setDescription(cashflow.description ?? "");
+    setTotal(cashflow.total);
+    setType(cashflow.type);
+    setDate(new Date(cashflow.date));
+    setGroupId(cashflow.groupId ?? "");
+    reset();
+  }, [cashflow, reset]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!cashflow) return;
 
     const result = await run(async () => {
       if (total <= 0) {
         return { success: false as const, message: "Informe um valor maior que zero." };
       }
 
-      const response = await fetch(`/api/v1/user/${userId}/cashflow`, {
-        method: "POST",
+      const response = await fetch(`/api/v1/user/${userId}/cashflow/${cashflow._id}`, {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key": crypto.randomUUID(),
         },
         body: JSON.stringify({
           name,
@@ -67,48 +89,43 @@ export function CreateCashflowSheet({ userId, onCreated }: CreateCashflowSheetPr
       const data = await response.json();
 
       if (response.ok && data.success) {
-        return { success: true as const, message: "Lançamento criado com sucesso." };
+        return { success: true as const, message: "Lançamento atualizado com sucesso." };
       }
       return {
         success: false as const,
-        message: data.message ?? "Erro ao criar lançamento.",
+        message: data.message ?? "Erro ao atualizar lançamento.",
       };
     });
 
     if (result.success) {
-      setName("");
-      setDescription("");
-      setTotal(0);
-      setGroupId("");
-      onCreated?.();
-      setOpen(false);
+      onUpdated?.();
+      onOpenChange(false);
     }
   }
 
   return (
     <Sheet
-      open={open}
+      open={cashflow !== null}
       onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
+        onOpenChange(nextOpen);
         if (!nextOpen) {
           reset();
         }
       }}
     >
-      <SheetTrigger render={<Button>Novo lançamento</Button>} />
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Criar lançamento</SheetTitle>
+          <SheetTitle>Editar lançamento</SheetTitle>
           <SheetDescription>
-            Cadastre uma entrada ou saída financeira para o usuário {userId}.
+            Atualize os dados do lançamento do usuário {userId}.
           </SheetDescription>
         </SheetHeader>
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="name">Nome</Label>
+              <Label htmlFor="edit-name">Nome</Label>
               <Input
-                id="name"
+                id="edit-name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Salário"
@@ -116,22 +133,22 @@ export function CreateCashflowSheet({ userId, onCreated }: CreateCashflowSheetPr
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="description">Descrição</Label>
+              <Label htmlFor="edit-description">Descrição</Label>
               <Textarea
-                id="description"
+                id="edit-description"
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
                 placeholder="Pagamento mensal"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="total">Valor</Label>
-              <CurrencyInput id="total" value={total} onChange={setTotal} required />
+              <Label htmlFor="edit-total">Valor</Label>
+              <CurrencyInput id="edit-total" value={total} onChange={setTotal} required />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="type">Tipo</Label>
+              <Label htmlFor="edit-type">Tipo</Label>
               <Select value={type} onValueChange={(value) => setType(value as "income" | "expense")}>
-                <SelectTrigger id="type" className="w-full">
+                <SelectTrigger id="edit-type" className="w-full">
                   <SelectValue>
                     {(value: "income" | "expense" | null) =>
                       value === "income" ? "Entrada" : "Saída"
@@ -149,9 +166,9 @@ export function CreateCashflowSheet({ userId, onCreated }: CreateCashflowSheetPr
               <DatePicker value={date} onChange={setDate} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="groupId">ID do grupo (opcional)</Label>
+              <Label htmlFor="edit-groupId">ID do grupo (opcional)</Label>
               <Input
-                id="groupId"
+                id="edit-groupId"
                 value={groupId}
                 onChange={(event) => setGroupId(event.target.value)}
                 placeholder="665f1c2e2f8b9a0012345678"
@@ -169,7 +186,7 @@ export function CreateCashflowSheet({ userId, onCreated }: CreateCashflowSheetPr
               Cancelar
             </SheetClose>
             <Button type="submit" disabled={state.status === "loading"}>
-              {state.status === "loading" ? "Criando..." : "Criar lançamento"}
+              {state.status === "loading" ? "Salvando..." : "Salvar alterações"}
             </Button>
           </SheetFooter>
         </form>
