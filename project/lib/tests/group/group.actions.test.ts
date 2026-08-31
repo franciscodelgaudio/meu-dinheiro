@@ -46,14 +46,6 @@ describe("UpdateGroup", () => {
         expect(mockFindOneAndUpdate).not.toHaveBeenCalled();
     });
 
-    it("retorna VALIDATION_ERROR quando date é um array vazio", async () => {
-        const result = await UpdateGroup({ id: VALID_ID, userId: VALID_USER_ID, date: [] });
-
-        expect(result.success).toBe(false);
-        expect(result.code).toBe("VALIDATION_ERROR");
-        expect(mockFindOneAndUpdate).not.toHaveBeenCalled();
-    });
-
     it("atualiza os campos informados, filtrando por id e userId, sem permitir alterar o userId", async () => {
         mockFindOneAndUpdate.mockResolvedValue({ _id: VALID_ID, userId: VALID_USER_ID, total: 2000 });
 

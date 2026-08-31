@@ -26,19 +26,6 @@ const groupSchema = new mongoose.Schema<IGroup>(
       default: null,
     },
 
-    date: [
-      {
-        month: {
-          type: String,
-          required: true,
-        },
-        year: {
-          type: Number,
-          required: true,
-        },
-      },
-    ],
-
     total: {
       type: Number,
       required: true,
