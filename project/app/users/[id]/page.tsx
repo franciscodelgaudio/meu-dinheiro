@@ -27,7 +27,7 @@ export default async function UserPage({
           <Link href={`/users/${id}/groups/new`} className={cn(buttonVariants({ variant: "outline" }))}>
             Criar grupo
           </Link>
-          <Link href={`/users/${id}/cashflows/new`} className={cn(buttonVariants({ variant: "outline" }))}>
+          <Link href={`/users/${id}/cashflows`} className={cn(buttonVariants({ variant: "outline" }))}>
             Criar lançamento
           </Link>
         </CardContent>

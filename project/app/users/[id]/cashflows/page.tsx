@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -13,7 +11,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { CreateCashflowSheet } from "@/components/cashflows/create-cashflow-sheet";
 
 type Cashflow = {
   _id: string;
@@ -111,7 +117,7 @@ export default function CashflowsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
-      <Card>
+      <Card className="flex min-h-0 flex-1 flex-col">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Lançamentos</CardTitle>
@@ -119,14 +125,9 @@ export default function CashflowsPage() {
               Entradas e saídas do usuário {userId}.
             </CardDescription>
           </div>
-          <Link
-            href={`/users/${userId}/cashflows/new`}
-            className={cn(buttonVariants())}
-          >
-            Novo lançamento
-          </Link>
+          <CreateCashflowSheet userId={userId} onCreated={() => loadPage()} />
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex min-h-0 flex-1 flex-col">
           {status === "error" && (
             <p className="text-sm text-destructive">Erro ao carregar lançamentos.</p>
           )}
@@ -134,56 +135,54 @@ export default function CashflowsPage() {
             <p className="text-sm text-muted-foreground">Nenhum lançamento encontrado.</p>
           )}
           {cashflows.length > 0 && (
-            <div className="rounded-md border">
-              <div
-                className="border-b bg-muted/50 text-foreground"
-                style={{ display: "grid", gridTemplateColumns: GRID_COLUMNS }}
-              >
-                <div className="h-10 px-2 flex items-center text-sm font-medium">Nome</div>
-                <div className="h-10 px-2 flex items-center text-sm font-medium">Data</div>
-                <div className="h-10 px-2 flex items-center text-sm font-medium">Tipo</div>
-                <div className="h-10 px-2 flex items-center justify-end text-sm font-medium">
-                  Valor
-                </div>
-              </div>
-              <div ref={scrollRef} className="h-[480px] overflow-y-auto">
-                <div
-                  style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}
+            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto rounded-md border">
+              <Table style={{ display: "grid" }}>
+                <TableHeader
+                  className="sticky top-0 z-10 bg-muted/95"
+                  style={{ display: "grid" }}
+                >
+                  <TableRow className="hover:bg-transparent" style={{ display: "grid", gridTemplateColumns: GRID_COLUMNS }}>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody
+                  style={{ display: "grid", height: rowVirtualizer.getTotalSize(), position: "relative" }}
                 >
                   {virtualItems.map((virtualRow) => {
                     const cashflow = cashflows[virtualRow.index];
                     return (
-                      <div
+                      <TableRow
                         key={cashflow._id}
-                        className="absolute top-0 left-0 w-full border-b text-sm transition-colors hover:bg-muted/50"
                         style={{
                           display: "grid",
                           gridTemplateColumns: GRID_COLUMNS,
+                          position: "absolute",
+                          width: "100%",
                           height: virtualRow.size,
                           transform: `translateY(${virtualRow.start}px)`,
                         }}
                       >
-                        <div className="px-2 flex items-center truncate">{cashflow.name}</div>
-                        <div className="px-2 flex items-center">
+                        <TableCell className="truncate">{cashflow.name}</TableCell>
+                        <TableCell>
                           {new Date(cashflow.date).toLocaleDateString("pt-BR")}
-                        </div>
-                        <div className="px-2 flex items-center">
+                        </TableCell>
+                        <TableCell>
                           <Badge variant={cashflow.type === "income" ? "default" : "destructive"}>
                             {cashflow.type === "income" ? "Entrada" : "Saída"}
                           </Badge>
-                        </div>
-                        <div className="px-2 flex items-center justify-end">
+                        </TableCell>
+                        <TableCell className="text-right">
                           {currencyFormatter.format(cashflow.total)}
-                        </div>
-                      </div>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-                </div>
-              </div>
+                </TableBody>
+              </Table>
             </div>
-          )}
-          {status === "loading" && cashflows.length > 0 && (
-            <p className="mt-2 text-center text-sm text-muted-foreground">Carregando...</p>
           )}
         </CardContent>
       </Card>
