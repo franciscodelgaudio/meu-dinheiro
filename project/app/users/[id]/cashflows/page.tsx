@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import {
   ArrowDown,
@@ -10,12 +10,14 @@ import {
   MoreHorizontal,
   Pencil,
   Receipt,
+  Search,
   Tag,
   Trash2,
   Wallet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -58,12 +60,40 @@ const ROW_HEIGHT = 44;
 type SortField = "name" | "date";
 type SortOrder = "asc" | "desc";
 
+type SortableHeaderProps = {
+  active: boolean;
+  order: SortOrder;
+  onClick: () => void;
+  children: ReactNode;
+};
+
+function SortableHeader({ active, order, onClick, children }: SortableHeaderProps) {
+  const Icon = !active ? ArrowUpDown : order === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-2 outline-none hover:text-foreground"
+    >
+      {children}
+      <Icon className={`size-3.5 ${active ? "text-foreground" : "text-muted-foreground/50"}`} />
+    </button>
+  );
+}
+
 export default function CashflowsPage() {
   const { id: userId } = useParams<{ id: string }>();
   const [editingCashflow, setEditingCashflow] = useState<Cashflow | null>(null);
   const [deletingCashflow, setDeletingCashflow] = useState<Cashflow | null>(null);
   const [sortBy, setSortBy] = useState<SortField>("date");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
 
   function toggleSort(field: SortField) {
     if (sortBy === field) {
@@ -84,11 +114,14 @@ export default function CashflowsPage() {
     reload,
   } = useCursorPaginationVirtualizer<Cashflow>({
     estimateSize: ROW_HEIGHT,
-    deps: [userId, sortBy, sortOrder],
+    deps: [userId, sortBy, sortOrder, search],
     fetchPage: async (cursor) => {
       const url = new URL(`/api/v1/user/${userId}/cashflow`, window.location.origin);
       url.searchParams.set("sortBy", sortBy);
       url.searchParams.set("sort", sortOrder);
+      if (search) {
+        url.searchParams.set("search", search);
+      }
       if (cursor) {
         url.searchParams.set("cursor", cursor);
       }
@@ -120,14 +153,26 @@ export default function CashflowsPage() {
   return (
     <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
       <div className="flex flex-col gap-4 p-4">
-        <div ref={headerRef} className="flex flex-row items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">Lançamentos</h1>
-            <p className="text-sm text-muted-foreground break-all">
-              Entradas e saídas do usuário {userId}.
-            </p>
+        <div ref={headerRef} className="flex flex-col gap-4">
+          <div className="flex flex-row items-center justify-between">
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight">Lançamentos</h1>
+              <p className="text-sm text-muted-foreground break-all">
+                Entradas e saídas do usuário {userId}.
+              </p>
+            </div>
+            <CreateCashflowSheet userId={userId} onCreated={reload} />
           </div>
-          <CreateCashflowSheet userId={userId} onCreated={reload} />
+
+          <div className="relative max-w-xs">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Buscar por nome..."
+              className="pl-8"
+            />
+          </div>
         </div>
 
         <EditCashflowSheet
@@ -169,11 +214,23 @@ export default function CashflowsPage() {
                 <TableRow className="hover:bg-transparent" style={{ display: "grid", gridTemplateColumns: GRID_COLUMNS }}>
                   <TableHead className="flex items-center gap-2">
                     <Receipt className="size-4" />
-                    Nome
+                    <SortableHeader
+                      active={sortBy === "name"}
+                      order={sortOrder}
+                      onClick={() => toggleSort("name")}
+                    >
+                      Nome
+                    </SortableHeader>
                   </TableHead>
                   <TableHead className="flex items-center gap-2">
                     <CalendarDays className="size-4" />
-                    Data
+                    <SortableHeader
+                      active={sortBy === "date"}
+                      order={sortOrder}
+                      onClick={() => toggleSort("date")}
+                    >
+                      Data
+                    </SortableHeader>
                   </TableHead>
                   <TableHead className="flex items-center gap-2">
                     <Tag className="size-4" />
