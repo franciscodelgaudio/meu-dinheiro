@@ -40,12 +40,29 @@ const UpdateGroupSchema = CreateGroupRequestV1.partial().extend({
     userId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid userId"),
 });
 
-type UpdateGroupResult =
-    | { success: true; message: string; code?: undefined }
-    | { success: false; message: string; code: "VALIDATION_ERROR" | "NOT_FOUND" | "CONFLICT" | "INTERNAL_SERVER_ERROR" };
+export async function UpdateGroup(data: z.infer<typeof UpdateGroupSchema>) {
 
-export async function UpdateGroup(data: z.infer<typeof UpdateGroupSchema>): Promise<UpdateGroupResult> {
-    throw new Error("Not implemented");
+    const parsedData = UpdateGroupSchema.safeParse(data);
+    if (!parsedData.success) {
+        return { success: false as const, message: "Invalid user data", code: "VALIDATION_ERROR" as const };
+    }
+
+    const { id, userId, ...updateFields } = parsedData.data;
+
+    try {
+        const updated = await Groups.findOneAndUpdate({ _id: id, userId }, updateFields, { new: true });
+
+        if (!updated) {
+            return { success: false as const, message: "Group not found", code: "NOT_FOUND" as const };
+        }
+
+        return { success: true as const, message: "Group updated successfully" };
+    } catch (error: any) {
+        if (error.code === 11000) {
+            return { success: false as const, message: "Group already exists", code: "CONFLICT" as const };
+        }
+        return { success: false as const, message: "Error updating group", code: "INTERNAL_SERVER_ERROR" as const };
+    }
 }
 
 const DeleteGroupSchema = z.object({
@@ -58,5 +75,22 @@ type DeleteGroupResult =
     | { success: false; message: string; code: "VALIDATION_ERROR" | "NOT_FOUND" | "INTERNAL_SERVER_ERROR" };
 
 export async function DeleteGroup(data: z.infer<typeof DeleteGroupSchema>): Promise<DeleteGroupResult> {
-    throw new Error("Not implemented");
+    const parsedData = DeleteGroupSchema.safeParse(data);
+    if (!parsedData.success) {
+        return { success: false as const, message: "Invalid user data", code: "VALIDATION_ERROR" as const };
+    }
+
+    const { id, userId } = parsedData.data;
+
+    try {
+        const deleted = await Groups.findOneAndDelete({ _id: id, userId });
+
+        if (!deleted) {
+            return { success: false as const, message: "Group not found", code: "NOT_FOUND" as const };
+        }
+
+        return { success: true as const, message: "Group deleted successfully" };
+    } catch {
+        return { success: false as const, message: "Error deleting group", code: "INTERNAL_SERVER_ERROR" as const };
+    }
 }
